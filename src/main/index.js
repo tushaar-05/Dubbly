@@ -2,6 +2,7 @@ import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { registerIpcHandlers } from './ipc'
 
 function createWindow() {
   // Create the browser window.
@@ -51,6 +52,9 @@ app.whenReady().then(() => {
 
   // IPC test
   ipcMain.on('ping', () => console.log('pong'))
+
+  // Register application IPC handlers for video, transcription, TTS, etc.
+  registerIpcHandlers()
 
   createWindow()
 
