@@ -1,11 +1,28 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { Sparkles, SlidersHorizontal, Share2, Download } from 'lucide-react'
+import apiService from '../services/api'
 
 /**
  * Dubbly Top Navigation Header
  * Clean, minimal white bar with branding and actions inspired by Reference Image 1.
+ * Fetches and displays the application version via secure IPC (Phase 3).
  */
 function Header() {
+  const [appVersion, setAppVersion] = useState(null)
+
+  useEffect(() => {
+    let isMounted = true
+    apiService.getAppVersion().then((version) => {
+      if (isMounted) {
+        setAppVersion(version)
+        console.log('[Dubbly IPC] Connected to main process. App version:', version)
+      }
+    })
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
   return (
     <header className="app-header">
       <div className="header-brand">
@@ -14,7 +31,9 @@ function Header() {
         </div>
         <div className="brand-text">
           <span className="brand-title">Dubbly</span>
-          <span className="brand-badge">Studio</span>
+          <span className="brand-badge" title="Retrieved via secure IPC from main process">
+            {appVersion ? `v${appVersion}` : 'Studio'}
+          </span>
         </div>
       </div>
 
