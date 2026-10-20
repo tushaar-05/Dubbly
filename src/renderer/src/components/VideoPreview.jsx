@@ -8,15 +8,21 @@ import {
   Trash2,
   RefreshCw,
   FileVideo,
+  FileAudio,
   Clock,
-  HardDrive
+  HardDrive,
+  CheckCircle2,
+  AlertCircle,
+  Loader2,
+  X
 } from 'lucide-react'
 import { formatDuration, formatFileSize } from '../utils/formatters'
+import apiService from '../services/api'
 
 /**
  * VideoPreview Component
  * Displays video preview with play/pause controls, progress scrubber,
- * file metadata, and replace/remove options.
+ * file metadata, replace/remove options, and FFmpeg audio extraction.
  */
 function VideoPreview({ videoFile, previewUrl, onReplace, onRemove }) {
   const videoRef = useRef(null)
@@ -29,13 +35,35 @@ function VideoPreview({ videoFile, previewUrl, onReplace, onRemove }) {
   const [videoDimensions, setVideoDimensions] = useState({ width: 0, height: 0 })
   const [hasPlaybackError, setHasPlaybackError] = useState(false)
 
-  // Reset playback state when a new preview URL is loaded
+  // Audio Extraction States (Phase 4)
+  const [isExtracting, setIsExtracting] = useState(false)
+  const [extractionResult, setExtractionResult] = useState(null)
+  const [extractedAudioUrl, setExtractedAudioUrl] = useState(null)
+  const [extractionError, setExtractionError] = useState(null)
+
+  // Reset playback and extraction states when a new preview URL is loaded
   useEffect(() => {
     setIsPlaying(false)
     setCurrentTime(0)
     setDuration(0)
     setHasPlaybackError(false)
+    setExtractionResult(null)
+    setExtractionError(null)
+
+    if (extractedAudioUrl) {
+      URL.revokeObjectURL(extractedAudioUrl)
+      setExtractedAudioUrl(null)
+    }
   }, [previewUrl])
+
+  // Cleanup audio blob URL on unmount
+  useEffect(() => {
+    return () => {
+      if (extractedAudioUrl) {
+        URL.revokeObjectURL(extractedAudioUrl)
+      }
+    }
+  }, [extractedAudioUrl])
 
   const togglePlayPause = () => {
     if (!videoRef.current) return
@@ -102,6 +130,60 @@ function VideoPreview({ videoFile, previewUrl, onReplace, onRemove }) {
   const handleReplaceFileChange = (e) => {
     if (e.target.files && e.target.files.length > 0) {
       onReplace(e.target.files[0])
+    }
+  }
+
+  /**
+   * Handle Audio Extraction Trigger
+   * Retrieves the video's absolute filesystem path and invokes main process FFmpeg.
+   */
+  const handleExtractAudio = async () => {
+    try {
+      setIsExtracting(true)
+      setExtractionError(null)
+
+      const videoPath = apiService.getPathForFile(videoFile)
+      if (!videoPath) {
+        throw new Error(
+          'Could not access the local filesystem path for this video. Please re-select the file using Browse.'
+        )
+      }
+
+      console.log('[Dubbly] Requesting audio extraction for:', videoPath)
+      const result = await apiService.extractAudio(videoPath)
+      console.log('[Dubbly] Extraction completed successfully:', result)
+
+      setExtractionResult(result)
+
+      // Fetch the extracted audio as a Blob URL for instant in-app playback
+      try {
+        const audioBlobUrl = await apiService.getAudioBlobUrl(result.outputPath)
+        setExtractedAudioUrl(audioBlobUrl)
+      } catch (blobErr) {
+        console.warn('Could not load audio playback blob:', blobErr)
+      }
+    } catch (err) {
+      console.error('[Dubbly] Audio extraction error:', err)
+      setExtractionError(err.message || 'Failed to extract audio from video.')
+    } finally {
+      setIsExtracting(false)
+    }
+  }
+
+  /**
+   * Test Invalid File Helper
+   * Allows testing how the application and IPC bridge respond to invalid input.
+   */
+  const handleTestInvalidFile = async () => {
+    try {
+      setIsExtracting(true)
+      setExtractionError(null)
+      // Provide an intentionally non-existent path to test validation
+      await apiService.extractAudio('/invalid/path/non_existent_video.mp4')
+    } catch (err) {
+      setExtractionError(err.message)
+    } finally {
+      setIsExtracting(false)
     }
   }
 
@@ -236,6 +318,26 @@ function VideoPreview({ videoFile, previewUrl, onReplace, onRemove }) {
         <div className="meta-actions-row">
           <button
             type="button"
+            className="btn-meta-action btn-primary-action"
+            onClick={handleExtractAudio}
+            disabled={isExtracting}
+            title="Extract 16kHz mono audio via FFmpeg"
+          >
+            {isExtracting ? (
+              <>
+                <Loader2 size={14} className="spin-icon" />
+                <span>Extracting...</span>
+              </>
+            ) : (
+              <>
+                <FileAudio size={14} />
+                <span>Extract Audio</span>
+              </>
+            )}
+          </button>
+
+          <button
+            type="button"
             className="btn-meta-action"
             onClick={handleReplaceClick}
             title="Choose a different video file"
@@ -254,6 +356,100 @@ function VideoPreview({ videoFile, previewUrl, onReplace, onRemove }) {
             <span>Remove</span>
           </button>
         </div>
+      </div>
+
+      {/* Extraction In-Progress Banner */}
+      {isExtracting && (
+        <div className="extraction-status-card loading">
+          <Loader2 size={18} className="spin-icon text-primary" />
+          <div className="extraction-status-text">
+            <strong>Running FFmpeg Audio Extraction...</strong>
+            <span>Extracting 16kHz 16-bit mono WAV for Whisper transcription.</span>
+          </div>
+        </div>
+      )}
+
+      {/* Extraction Success Card with Audio Player */}
+      {extractionResult && (
+        <div className="extraction-status-card success">
+          <div className="status-header-row">
+            <div className="status-title-group">
+              <CheckCircle2 size={18} className="text-success" />
+              <strong>Audio Extracted Successfully (Whisper Ready)</strong>
+            </div>
+            <button
+              type="button"
+              className="btn-dismiss"
+              onClick={() => setExtractionResult(null)}
+              title="Dismiss"
+            >
+              <X size={14} />
+            </button>
+          </div>
+
+          <div className="extraction-details-grid">
+            <div className="detail-item">
+              <span className="detail-label">File:</span>
+              <span className="detail-value">{extractionResult.filename}</span>
+            </div>
+            <div className="detail-item">
+              <span className="detail-label">Size:</span>
+              <span className="detail-value">{formatFileSize(extractionResult.sizeBytes)}</span>
+            </div>
+            <div className="detail-item">
+              <span className="detail-label">Format:</span>
+              <span className="detail-value">{extractionResult.format}</span>
+            </div>
+            <div className="detail-item full-width">
+              <span className="detail-label">Location:</span>
+              <span className="detail-value path" title={extractionResult.outputPath}>
+                {extractionResult.outputPath}
+              </span>
+            </div>
+          </div>
+
+          {/* Interactive HTML5 Audio Player */}
+          {extractedAudioUrl && (
+            <div className="audio-player-wrapper">
+              <span className="audio-player-label">Listen to Extracted Audio:</span>
+              <audio controls src={extractedAudioUrl} className="audio-player-control" />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Extraction Error Alert Card */}
+      {extractionError && (
+        <div className="extraction-status-card error">
+          <div className="status-header-row">
+            <div className="status-title-group">
+              <AlertCircle size={18} className="text-danger" />
+              <strong>Audio Extraction Error</strong>
+            </div>
+            <button
+              type="button"
+              className="btn-dismiss"
+              onClick={() => setExtractionError(null)}
+              title="Dismiss"
+            >
+              <X size={14} />
+            </button>
+          </div>
+          <p className="error-message-text">{extractionError}</p>
+        </div>
+      )}
+
+      {/* Small Test Helper for Error Handling Verification */}
+      <div className="test-helper-row">
+        <span className="test-helper-label">Phase 4 Verification:</span>
+        <button
+          type="button"
+          className="btn-text-link"
+          onClick={handleTestInvalidFile}
+          disabled={isExtracting}
+        >
+          Test Invalid File Error
+        </button>
       </div>
     </div>
   )
