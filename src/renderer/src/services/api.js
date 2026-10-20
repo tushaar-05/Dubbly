@@ -90,6 +90,37 @@ export const apiService = {
     const byteArray = new Uint8Array(byteNumbers)
     const blob = new Blob([byteArray], { type: 'audio/wav' })
     return URL.createObjectURL(blob)
+  },
+
+  /**
+   * Request speech-to-text transcription via whisper.cpp in the main process (Phase 5)
+   * @param {string} audioPath - Path to extracted WAV audio
+   * @param {string} [modelPath] - Optional custom model path
+   * @returns {Promise<{
+   *   success: boolean,
+   *   language: string,
+   *   model: string,
+   *   segmentCount: number,
+   *   fullText: string,
+   *   segments: Array<{
+   *     id: number,
+   *     startTime: string,
+   *     endTime: string,
+   *     startMs: number,
+   *     endMs: number,
+   *     durationSec: string,
+   *     text: string
+   *   }>
+   * }>}
+   */
+  async transcribeAudio(audioPath, modelPath) {
+    if (!audioPath) {
+      throw new Error('No audio path provided for transcription.')
+    }
+    if (!window.api || typeof window.api.transcribeAudio !== 'function') {
+      throw new Error('Electron transcription API is unavailable.')
+    }
+    return await window.api.transcribeAudio(audioPath, modelPath)
   }
 }
 

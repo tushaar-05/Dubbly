@@ -49,7 +49,31 @@ const api = {
    * @param {string} audioPath - Absolute filesystem path of the extracted WAV
    * @returns {Promise<string>} Base64-encoded audio data
    */
-  readAudioData: (audioPath) => ipcRenderer.invoke('video:read-audio-data', { audioPath })
+  readAudioData: (audioPath) => ipcRenderer.invoke('video:read-audio-data', { audioPath }),
+
+  /**
+   * Request speech-to-text transcription via whisper.cpp (Phase 5)
+   * @param {string} audioPath - Absolute filesystem path of extracted 16kHz WAV
+   * @param {string} [modelPath] - Optional custom model path
+   * @returns {Promise<{
+   *   success: boolean,
+   *   language: string,
+   *   model: string,
+   *   segmentCount: number,
+   *   fullText: string,
+   *   segments: Array<{
+   *     id: number,
+   *     startTime: string,
+   *     endTime: string,
+   *     startMs: number,
+   *     endMs: number,
+   *     durationSec: string,
+   *     text: string
+   *   }>
+   * }>}
+   */
+  transcribeAudio: (audioPath, modelPath) =>
+    ipcRenderer.invoke('transcription:transcribe-audio', { audioPath, modelPath })
 }
 
 // Expose APIs to renderer only if context isolation is enabled

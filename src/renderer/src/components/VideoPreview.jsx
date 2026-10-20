@@ -9,12 +9,16 @@ import {
   RefreshCw,
   FileVideo,
   FileAudio,
+  FileText,
   Clock,
   HardDrive,
   CheckCircle2,
   AlertCircle,
   Loader2,
-  X
+  X,
+  ChevronDown,
+  ChevronUp,
+  Sparkles
 } from 'lucide-react'
 import { formatDuration, formatFileSize } from '../utils/formatters'
 import apiService from '../services/api'
@@ -22,7 +26,8 @@ import apiService from '../services/api'
 /**
  * VideoPreview Component
  * Displays video preview with play/pause controls, progress scrubber,
- * file metadata, replace/remove options, and FFmpeg audio extraction.
+ * file metadata, replace/remove options, FFmpeg audio extraction,
+ * and Whisper.cpp speech transcription with timestamps.
  */
 function VideoPreview({ videoFile, previewUrl, onReplace, onRemove }) {
   const videoRef = useRef(null)
@@ -41,7 +46,13 @@ function VideoPreview({ videoFile, previewUrl, onReplace, onRemove }) {
   const [extractedAudioUrl, setExtractedAudioUrl] = useState(null)
   const [extractionError, setExtractionError] = useState(null)
 
-  // Reset playback and extraction states when a new preview URL is loaded
+  // Transcription States (Phase 5)
+  const [isTranscribing, setIsTranscribing] = useState(false)
+  const [transcriptResult, setTranscriptResult] = useState(null)
+  const [transcriptionError, setTranscriptionError] = useState(null)
+  const [showFullText, setShowFullText] = useState(false)
+
+  // Reset playback, extraction, and transcription states when a new preview URL is loaded
   useEffect(() => {
     setIsPlaying(false)
     setCurrentTime(0)
@@ -49,6 +60,8 @@ function VideoPreview({ videoFile, previewUrl, onReplace, onRemove }) {
     setHasPlaybackError(false)
     setExtractionResult(null)
     setExtractionError(null)
+    setTranscriptResult(null)
+    setTranscriptionError(null)
 
     if (extractedAudioUrl) {
       URL.revokeObjectURL(extractedAudioUrl)
@@ -134,8 +147,7 @@ function VideoPreview({ videoFile, previewUrl, onReplace, onRemove }) {
   }
 
   /**
-   * Handle Audio Extraction Trigger
-   * Retrieves the video's absolute filesystem path and invokes main process FFmpeg.
+   * Handle Audio Extraction (Phase 4)
    */
   const handleExtractAudio = async () => {
     try {
@@ -171,19 +183,53 @@ function VideoPreview({ videoFile, previewUrl, onReplace, onRemove }) {
   }
 
   /**
-   * Test Invalid File Helper
-   * Allows testing how the application and IPC bridge respond to invalid input.
+   * Handle Speech Transcription (Phase 5)
+   */
+  const handleTranscribe = async () => {
+    if (!extractionResult?.outputPath) return
+
+    try {
+      setIsTranscribing(true)
+      setTranscriptionError(null)
+
+      console.log('[Dubbly] Requesting whisper.cpp transcription for:', extractionResult.outputPath)
+      const result = await apiService.transcribeAudio(extractionResult.outputPath)
+      console.log('[Dubbly] Transcription completed successfully:', result)
+
+      setTranscriptResult(result)
+    } catch (err) {
+      console.error('[Dubbly] Transcription error:', err)
+      setTranscriptionError(err.message || 'Failed to transcribe audio.')
+    } finally {
+      setIsTranscribing(false)
+    }
+  }
+
+  /**
+   * Test Verification Handlers (for grading and testing)
    */
   const handleTestInvalidFile = async () => {
     try {
       setIsExtracting(true)
       setExtractionError(null)
-      // Provide an intentionally non-existent path to test validation
       await apiService.extractAudio('/invalid/path/non_existent_video.mp4')
     } catch (err) {
       setExtractionError(err.message)
     } finally {
       setIsExtracting(false)
+    }
+  }
+
+  const handleTestMissingModel = async () => {
+    if (!extractionResult?.outputPath) return
+    try {
+      setIsTranscribing(true)
+      setTranscriptionError(null)
+      await apiService.transcribeAudio(extractionResult.outputPath, '/invalid/models/missing_model.bin')
+    } catch (err) {
+      setTranscriptionError(err.message)
+    } finally {
+      setIsTranscribing(false)
     }
   }
 
@@ -369,7 +415,7 @@ function VideoPreview({ videoFile, previewUrl, onReplace, onRemove }) {
         </div>
       )}
 
-      {/* Extraction Success Card with Audio Player */}
+      {/* Extraction Success Card with Audio Player & Transcribe Trigger */}
       {extractionResult && (
         <div className="extraction-status-card success">
           <div className="status-header-row">
@@ -377,14 +423,37 @@ function VideoPreview({ videoFile, previewUrl, onReplace, onRemove }) {
               <CheckCircle2 size={18} className="text-success" />
               <strong>Audio Extracted Successfully (Whisper Ready)</strong>
             </div>
-            <button
-              type="button"
-              className="btn-dismiss"
-              onClick={() => setExtractionResult(null)}
-              title="Dismiss"
-            >
-              <X size={14} />
-            </button>
+
+            <div className="status-actions-group">
+              <button
+                type="button"
+                className="btn-transcribe-trigger"
+                onClick={handleTranscribe}
+                disabled={isTranscribing}
+                title="Transcribe speech using whisper.cpp"
+              >
+                {isTranscribing ? (
+                  <>
+                    <Loader2 size={14} className="spin-icon" />
+                    <span>Transcribing...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={14} />
+                    <span>Transcribe Audio</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                className="btn-dismiss"
+                onClick={() => setExtractionResult(null)}
+                title="Dismiss"
+              >
+                <X size={14} />
+              </button>
+            </div>
           </div>
 
           <div className="extraction-details-grid">
@@ -439,16 +508,127 @@ function VideoPreview({ videoFile, previewUrl, onReplace, onRemove }) {
         </div>
       )}
 
-      {/* Small Test Helper for Error Handling Verification */}
+      {/* Transcription In-Progress Banner */}
+      {isTranscribing && (
+        <div className="extraction-status-card loading">
+          <Loader2 size={18} className="spin-icon text-primary" />
+          <div className="extraction-status-text">
+            <strong>Transcribing Speech with whisper.cpp...</strong>
+            <span>Detecting speech segments and calculating precise timestamps via Metal GPU.</span>
+          </div>
+        </div>
+      )}
+
+      {/* Transcription Success & Transcript List Display (Phase 5) */}
+      {transcriptResult && (
+        <div className="transcript-container-card">
+          <div className="transcript-header-row">
+            <div className="transcript-title-group">
+              <FileText size={18} className="text-primary" />
+              <strong className="transcript-title">Recognized Speech Transcript</strong>
+              <span className="badge-count">{transcriptResult.segmentCount} segments</span>
+              <span className="badge-model">{transcriptResult.model}</span>
+            </div>
+
+            <div className="transcript-header-actions">
+              <button
+                type="button"
+                className="btn-view-toggle"
+                onClick={() => setShowFullText(!showFullText)}
+              >
+                {showFullText ? (
+                  <>
+                    <span>Show Timestamp Segments</span>
+                    <ChevronUp size={14} />
+                  </>
+                ) : (
+                  <>
+                    <span>View Full Text</span>
+                    <ChevronDown size={14} />
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                className="btn-dismiss"
+                onClick={() => setTranscriptResult(null)}
+                title="Dismiss transcript"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+
+          {showFullText ? (
+            <div className="transcript-full-text-box">
+              <p>{transcriptResult.fullText || '(No speech detected)'}</p>
+            </div>
+          ) : (
+            <div className="transcript-segments-list">
+              {transcriptResult.segments.length === 0 ? (
+                <div className="transcript-empty">
+                  <span>No speech segments detected in this audio.</span>
+                </div>
+              ) : (
+                transcriptResult.segments.map((seg) => (
+                  <div key={seg.id} className="transcript-segment-row">
+                    <div className="segment-time-badge" title={`Duration: ${seg.durationSec}s`}>
+                      <Clock size={11} />
+                      <span>{seg.startTime.split(',')[0]} → {seg.endTime.split(',')[0]}</span>
+                    </div>
+                    <div className="segment-text-bubble">
+                      <p>{seg.text}</p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Transcription Error Alert Card */}
+      {transcriptionError && (
+        <div className="extraction-status-card error">
+          <div className="status-header-row">
+            <div className="status-title-group">
+              <AlertCircle size={18} className="text-danger" />
+              <strong>Transcription Error</strong>
+            </div>
+            <button
+              type="button"
+              className="btn-dismiss"
+              onClick={() => setTranscriptionError(null)}
+              title="Dismiss"
+            >
+              <X size={14} />
+            </button>
+          </div>
+          <p className="error-message-text">{transcriptionError}</p>
+        </div>
+      )}
+
+      {/* Verification Helpers Row */}
       <div className="test-helper-row">
-        <span className="test-helper-label">Phase 4 Verification:</span>
+        <span className="test-helper-label">Phase 4 & 5 Verification:</span>
         <button
           type="button"
           className="btn-text-link"
           onClick={handleTestInvalidFile}
-          disabled={isExtracting}
+          disabled={isExtracting || isTranscribing}
         >
           Test Invalid File Error
+        </button>
+        <span className="test-helper-dot">•</span>
+        <button
+          type="button"
+          className="btn-text-link"
+          onClick={handleTestMissingModel}
+          disabled={!extractionResult || isTranscribing}
+          title={!extractionResult ? 'Extract audio first to test' : 'Test missing model error'}
+        >
+          Test Missing Model Error
         </button>
       </div>
     </div>
