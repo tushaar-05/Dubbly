@@ -121,6 +121,43 @@ export const apiService = {
       throw new Error('Electron transcription API is unavailable.')
     }
     return await window.api.transcribeAudio(audioPath, modelPath)
+  },
+
+  /**
+   * Request transcript translation into Indian languages via main process (Phase 6)
+   * @param {Array} segments - Array of Whisper transcript segments
+   * @param {string} targetLanguage - Target language code (hi, mr, bn, gu, ta, te)
+   * @returns {Promise<{
+   *   success: boolean,
+   *   sourceLanguage: string,
+   *   targetLanguage: string,
+   *   targetLanguageName: string,
+   *   targetLanguageNative: string,
+   *   segmentCount: number,
+   *   fullTranslatedText: string,
+   *   segments: Array<{
+   *     id: number,
+   *     startTime: string,
+   *     endTime: string,
+   *     startMs: number,
+   *     endMs: number,
+   *     durationSec: string,
+   *     originalText: string,
+   *     translatedText: string
+   *   }>
+   * }>}
+   */
+  async translateTranscript(segments, targetLanguage) {
+    if (!segments || !Array.isArray(segments) || segments.length === 0) {
+      throw new Error('Cannot translate: No transcript segments available.')
+    }
+    if (!targetLanguage) {
+      throw new Error('No target language specified.')
+    }
+    if (!window.api || typeof window.api.translateTranscript !== 'function') {
+      throw new Error('Electron translation API is unavailable.')
+    }
+    return await window.api.translateTranscript(segments, targetLanguage)
   }
 }
 

@@ -3,6 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import videoService from '../services/video'
 import transcriptionService from '../services/transcription'
+import translationService from '../services/translation'
 
 /**
  * IPC Handler Registry
@@ -130,6 +131,30 @@ export function registerIpcHandlers() {
     }
 
     return await transcriptionService.transcribeAudio(resolvedAudioPath, { modelPath })
+  })
+
+  /**
+   * Transcript Translation Channel (Phase 6)
+   * Channel: 'translation:translate-transcript'
+   */
+  ipcMain.handle('translation:translate-transcript', async (_, { segments, targetLanguage } = {}) => {
+    // 1. Validate segments argument
+    if (!segments || !Array.isArray(segments)) {
+      throw new Error('Invalid request: segments must be an array of transcript items.')
+    }
+
+    if (segments.length === 0) {
+      throw new Error(
+        'Empty transcript: Cannot translate because no speech segments were provided. Please transcribe audio first.'
+      )
+    }
+
+    // 2. Validate target language argument
+    if (!targetLanguage || typeof targetLanguage !== 'string') {
+      throw new Error('Target language code must be provided.')
+    }
+
+    return await translationService.translateTranscript(segments, targetLanguage)
   })
 }
 

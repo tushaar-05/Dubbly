@@ -73,7 +73,16 @@ const api = {
    * }>}
    */
   transcribeAudio: (audioPath, modelPath) =>
-    ipcRenderer.invoke('transcription:transcribe-audio', { audioPath, modelPath })
+    ipcRenderer.invoke('transcription:transcribe-audio', { audioPath, modelPath }),
+
+  /**
+   * Request transcript translation into Indian languages via Google Translate (Phase 6)
+   * @param {Array} segments - Array of Whisper transcript segments
+   * @param {string} targetLanguage - Target Indian language code (hi, mr, bn, gu, ta, te)
+   * @returns {Promise<object>}
+   */
+  translateTranscript: (segments, targetLanguage) =>
+    ipcRenderer.invoke('translation:translate-transcript', { segments, targetLanguage })
 }
 
 // Expose APIs to renderer only if context isolation is enabled

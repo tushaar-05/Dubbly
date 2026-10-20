@@ -18,18 +18,28 @@ import {
   X,
   ChevronDown,
   ChevronUp,
-  Sparkles
+  Sparkles,
+  Languages,
+  ArrowRight
 } from 'lucide-react'
 import { formatDuration, formatFileSize } from '../utils/formatters'
 import apiService from '../services/api'
+import { INDIAN_LANGUAGES } from './DubbingSettings'
 
 /**
  * VideoPreview Component
  * Displays video preview with play/pause controls, progress scrubber,
  * file metadata, replace/remove options, FFmpeg audio extraction,
- * and Whisper.cpp speech transcription with timestamps.
+ * Whisper.cpp speech transcription, and Google Translate multilingual translation.
  */
-function VideoPreview({ videoFile, previewUrl, onReplace, onRemove }) {
+function VideoPreview({
+  videoFile,
+  previewUrl,
+  targetLanguage = 'hi',
+  onLanguageChange,
+  onReplace,
+  onRemove
+}) {
   const videoRef = useRef(null)
   const replaceInputRef = useRef(null)
 
@@ -52,7 +62,12 @@ function VideoPreview({ videoFile, previewUrl, onReplace, onRemove }) {
   const [transcriptionError, setTranscriptionError] = useState(null)
   const [showFullText, setShowFullText] = useState(false)
 
-  // Reset playback, extraction, and transcription states when a new preview URL is loaded
+  // Translation States (Phase 6)
+  const [isTranslating, setIsTranslating] = useState(false)
+  const [translationResult, setTranslationResult] = useState(null)
+  const [translationError, setTranslationError] = useState(null)
+
+  // Reset playback, extraction, transcription, and translation states when a new preview URL is loaded
   useEffect(() => {
     setIsPlaying(false)
     setCurrentTime(0)
@@ -62,6 +77,8 @@ function VideoPreview({ videoFile, previewUrl, onReplace, onRemove }) {
     setExtractionError(null)
     setTranscriptResult(null)
     setTranscriptionError(null)
+    setTranslationResult(null)
+    setTranslationError(null)
 
     if (extractedAudioUrl) {
       URL.revokeObjectURL(extractedAudioUrl)
@@ -206,6 +223,34 @@ function VideoPreview({ videoFile, previewUrl, onReplace, onRemove }) {
   }
 
   /**
+   * Handle Multilingual Translation (Phase 6)
+   */
+  const handleTranslate = async (langCodeToUse) => {
+    const lang = langCodeToUse || targetLanguage || 'hi'
+
+    if (!transcriptResult?.segments || transcriptResult.segments.length === 0) {
+      setTranslationError('Please transcribe audio first before attempting translation.')
+      return
+    }
+
+    try {
+      setIsTranslating(true)
+      setTranslationError(null)
+
+      console.log(`[Dubbly] Translating transcript into ${lang}...`)
+      const result = await apiService.translateTranscript(transcriptResult.segments, lang)
+      console.log('[Dubbly] Translation completed successfully:', result)
+
+      setTranslationResult(result)
+    } catch (err) {
+      console.error('[Dubbly] Translation error:', err)
+      setTranslationError(err.message || 'Failed to translate transcript.')
+    } finally {
+      setIsTranslating(false)
+    }
+  }
+
+  /**
    * Test Verification Handlers (for grading and testing)
    */
   const handleTestInvalidFile = async () => {
@@ -233,6 +278,20 @@ function VideoPreview({ videoFile, previewUrl, onReplace, onRemove }) {
     }
   }
 
+  const handleTestTranslationError = async () => {
+    try {
+      setIsTranslating(true)
+      setTranslationError(null)
+      // Test with empty segments to verify validation
+      await apiService.translateTranscript([], 'hi')
+    } catch (err) {
+      setTranslationError(err.message)
+    } finally {
+      setIsTranslating(false)
+    }
+  }
+
+  const currentLangObj = INDIAN_LANGUAGES.find((l) => l.code === targetLanguage) || INDIAN_LANGUAGES[0]
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0
 
   return (
@@ -531,6 +590,45 @@ function VideoPreview({ videoFile, previewUrl, onReplace, onRemove }) {
             </div>
 
             <div className="transcript-header-actions">
+              {/* Target Language Selector & Translation Action (Phase 6) */}
+              <div className="quick-lang-group">
+                <select
+                  className="quick-lang-select"
+                  value={targetLanguage}
+                  onChange={(e) => {
+                    const newLang = e.target.value
+                    if (onLanguageChange) onLanguageChange(newLang)
+                  }}
+                  title="Target language for translation"
+                >
+                  {INDIAN_LANGUAGES.map((l) => (
+                    <option key={l.code} value={l.code}>
+                      {l.name} ({l.native})
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  type="button"
+                  className="btn-translate-trigger"
+                  onClick={() => handleTranslate()}
+                  disabled={isTranslating}
+                  title={`Translate transcript into ${currentLangObj.name}`}
+                >
+                  {isTranslating ? (
+                    <>
+                      <Loader2 size={13} className="spin-icon" />
+                      <span>Translating...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Languages size={13} />
+                      <span>Translate to {currentLangObj.name}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
               <button
                 type="button"
                 className="btn-view-toggle"
@@ -538,7 +636,7 @@ function VideoPreview({ videoFile, previewUrl, onReplace, onRemove }) {
               >
                 {showFullText ? (
                   <>
-                    <span>Show Timestamp Segments</span>
+                    <span>Show Segments</span>
                     <ChevronUp size={14} />
                   </>
                 ) : (
@@ -552,7 +650,10 @@ function VideoPreview({ videoFile, previewUrl, onReplace, onRemove }) {
               <button
                 type="button"
                 className="btn-dismiss"
-                onClick={() => setTranscriptResult(null)}
+                onClick={() => {
+                  setTranscriptResult(null)
+                  setTranslationResult(null)
+                }}
                 title="Dismiss transcript"
               >
                 <X size={14} />
@@ -609,14 +710,105 @@ function VideoPreview({ videoFile, previewUrl, onReplace, onRemove }) {
         </div>
       )}
 
+      {/* Translation In-Progress Banner */}
+      {isTranslating && (
+        <div className="extraction-status-card loading">
+          <Loader2 size={18} className="spin-icon text-primary" />
+          <div className="extraction-status-text">
+            <strong>Translating Speech Transcript...</strong>
+            <span>Translating segments to {currentLangObj.name} ({currentLangObj.native}) via Google Translate.</span>
+          </div>
+        </div>
+      )}
+
+      {/* Translation Result Card (Phase 6): Side-by-Side Comparison */}
+      {translationResult && (
+        <div className="translation-container-card">
+          <div className="translation-header-row">
+            <div className="translation-title-group">
+              <Languages size={18} className="text-primary" />
+              <strong className="translation-title">
+                Multilingual Translation ({translationResult.targetLanguageName})
+              </strong>
+              <span className="badge-lang-native">{translationResult.targetLanguageNative}</span>
+              <span className="badge-count">{translationResult.segmentCount} segments</span>
+            </div>
+
+            <div className="translation-header-actions">
+              <button
+                type="button"
+                className="btn-dismiss"
+                onClick={() => setTranslationResult(null)}
+                title="Dismiss translation"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+
+          <div className="comparison-segments-list">
+            {translationResult.segments.map((seg) => (
+              <div key={seg.id} className="comparison-segment-card">
+                <div className="comparison-segment-header">
+                  <div className="segment-time-badge" title={`Duration: ${seg.durationSec}s`}>
+                    <Clock size={11} />
+                    <span>{seg.startTime.split(',')[0]} → {seg.endTime.split(',')[0]}</span>
+                  </div>
+                  <span className="segment-id-tag">Segment #{seg.id}</span>
+                </div>
+
+                <div className="comparison-dual-columns">
+                  {/* English Original */}
+                  <div className="comparison-col original">
+                    <span className="lang-label">English (Original)</span>
+                    <p className="segment-text">{seg.originalText || '(Silence)'}</p>
+                  </div>
+
+                  {/* Indian Language Translated */}
+                  <div className="comparison-col translated">
+                    <span className="lang-label highlight">
+                      {translationResult.targetLanguageName} ({translationResult.targetLanguageNative})
+                    </span>
+                    <p className="segment-text translated-content">
+                      {seg.translatedText || '(Silence)'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Translation Error Alert Card */}
+      {translationError && (
+        <div className="extraction-status-card error">
+          <div className="status-header-row">
+            <div className="status-title-group">
+              <AlertCircle size={18} className="text-danger" />
+              <strong>Translation Error</strong>
+            </div>
+            <button
+              type="button"
+              className="btn-dismiss"
+              onClick={() => setTranslationError(null)}
+              title="Dismiss"
+            >
+              <X size={14} />
+            </button>
+          </div>
+          <p className="error-message-text">{translationError}</p>
+        </div>
+      )}
+
       {/* Verification Helpers Row */}
       <div className="test-helper-row">
-        <span className="test-helper-label">Phase 4 & 5 Verification:</span>
+        <span className="test-helper-label">Verification Triggers:</span>
         <button
           type="button"
           className="btn-text-link"
           onClick={handleTestInvalidFile}
-          disabled={isExtracting || isTranscribing}
+          disabled={isExtracting || isTranscribing || isTranslating}
         >
           Test Invalid File Error
         </button>
@@ -625,10 +817,20 @@ function VideoPreview({ videoFile, previewUrl, onReplace, onRemove }) {
           type="button"
           className="btn-text-link"
           onClick={handleTestMissingModel}
-          disabled={!extractionResult || isTranscribing}
+          disabled={!extractionResult || isTranscribing || isTranslating}
           title={!extractionResult ? 'Extract audio first to test' : 'Test missing model error'}
         >
           Test Missing Model Error
+        </button>
+        <span className="test-helper-dot">•</span>
+        <button
+          type="button"
+          className="btn-text-link"
+          onClick={handleTestTranslationError}
+          disabled={isTranslating}
+          title="Test empty transcript translation error"
+        >
+          Test Empty Translation Error
         </button>
       </div>
     </div>

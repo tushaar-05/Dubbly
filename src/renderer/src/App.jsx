@@ -63,6 +63,8 @@ function App() {
             <VideoPreview
               videoFile={videoFile}
               previewUrl={previewUrl}
+              targetLanguage={selectedLanguage}
+              onLanguageChange={setSelectedLanguage}
               onReplace={handleReplace}
               onRemove={handleRemove}
             />

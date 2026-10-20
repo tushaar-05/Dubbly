@@ -1203,3 +1203,168 @@ input:checked + .slider-pill:before {
 .test-helper-dot {
   color: var(--border-card);
 }
+
+/* ==========================================================================
+   Phase 6: Multilingual Translation & Dual Comparison Styles
+   ========================================================================== */
+.quick-lang-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.quick-lang-select {
+  appearance: none;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  outline: none;
+  cursor: pointer;
+}
+
+.btn-translate-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  background-color: #0284c7;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.btn-translate-trigger:hover:not(:disabled) {
+  background-color: #0369a1;
+}
+
+.btn-translate-trigger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.translation-container-card {
+  border-radius: var(--radius-md);
+  padding: 16px;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.translation-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 10px;
+}
+
+.translation-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.translation-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.badge-lang-native {
+  font-size: 12px;
+  font-weight: 600;
+  color: #0284c7;
+  background-color: #e0f2fe;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+}
+
+.comparison-segments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.comparison-segment-card {
+  background-color: #f8fafc;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: border-color 0.15s ease;
+}
+
+.comparison-segment-card:hover {
+  border-color: #cbd5e1;
+}
+
+.comparison-segment-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.segment-id-tag {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.comparison-dual-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.comparison-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background-color: var(--bg-surface);
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid #f1f5f9;
+}
+
+.comparison-col.translated {
+  background-color: #f0fdf4;
+  border-color: #dcfce7;
+}
+
+.lang-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.lang-label.highlight {
+  color: #15803d;
+}
+
+.segment-text {
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.45;
+}
+
+.translated-content {
+  color: #14532d;
+  font-weight: 500;
+}
