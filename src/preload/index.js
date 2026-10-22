@@ -108,7 +108,34 @@ const api = {
    * @returns {Promise<object>}
    */
   getTtsVoices: (language) =>
-    ipcRenderer.invoke('tts:get-voices', { language })
+    ipcRenderer.invoke('tts:get-voices', { language }),
+
+  /**
+   * Export dubbed video with synchronized audio track (Phase 8)
+   * @param {string} videoPath - Absolute filesystem path of original video
+   * @param {Array} clips - Synthesized voice clips with timestamps
+   * @param {string} targetLanguage - Target language code (hi, mr, bn, gu, ta, te)
+   * @param {object} [options]
+   * @returns {Promise<object>}
+   */
+  exportDubbedVideo: (videoPath, clips, targetLanguage, options) =>
+    ipcRenderer.invoke('video:export-dubbed', { videoPath, clips, targetLanguage, options }),
+
+  /**
+   * Read exported dubbed video data for in-app HTML5 preview
+   * @param {string} videoPath - Absolute path to exported .mp4 inside temporary dubbly_exports directory
+   * @returns {Promise<string>} Base64-encoded video data
+   */
+  readExportedVideo: (videoPath) =>
+    ipcRenderer.invoke('video:read-exported-video', { videoPath }),
+
+  /**
+   * Open exported file location in macOS Finder / system file explorer
+   * @param {string} filePath - Path to file
+   * @returns {Promise<boolean>}
+   */
+  showInFolder: (filePath) =>
+    ipcRenderer.invoke('video:show-in-folder', { filePath })
 }
 
 // Expose APIs to renderer only if context isolation is enabled

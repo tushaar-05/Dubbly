@@ -182,6 +182,113 @@ export const videoService = {
         }
       })
     })
+  },
+
+  /**
+   * Combine the original video with the synchronized dubbed audio track.
+   *
+   * PRESERVES VIDEO QUALITY:
+   * Uses FFmpeg stream copy (-c:v copy) to transfer video packets losslessly without
+   * re-encoding, preserving 100% original visual fidelity at near-instantaneous export speeds.
+   * Encodes audio to high-quality AAC (-c:a aac -b:a 192k) for universal compatibility.
+   *
+   * @param {string} videoPath - Absolute path to original video file
+   * @param {string} audioPath - Absolute path to master dubbed audio file
+   * @param {object} [options]
+   * @param {string} [options.outputDir] - Custom export directory
+   * @param {string} [options.language] - Language tag for filename
+   * @returns {Promise<{
+   *   success: boolean,
+   *   outputPath: string,
+   *   filename: string,
+   *   sizeBytes: number,
+   *   format: string
+   * }>}
+   */
+  async combineVideoAndAudio(videoPath, audioPath, options = {}) {
+    if (!videoPath || typeof videoPath !== 'string') {
+      throw new Error('Invalid video path provided for export.')
+    }
+    if (!fs.existsSync(videoPath)) {
+      throw new Error(`Video file does not exist: "${videoPath}"`)
+    }
+
+    if (!audioPath || typeof audioPath !== 'string') {
+      throw new Error('Invalid audio path provided for export.')
+    }
+    if (!fs.existsSync(audioPath)) {
+      throw new Error(`Dubbed audio file does not exist: "${audioPath}"`)
+    }
+
+    const ffmpegPath = await findFfmpegBinary()
+
+    // 1. Prepare dedicated output directory
+    const baseTemp =
+      app && typeof app.getPath === 'function' ? app.getPath('temp') : os.tmpdir()
+    const exportDir = options.outputDir || path.join(baseTemp, 'dubbly_exports')
+    await fs.promises.mkdir(exportDir, { recursive: true })
+
+    const langSuffix = options.language ? `_${options.language}` : ''
+    const baseName = path.basename(videoPath, path.extname(videoPath))
+    const sanitizedBase = baseName.replace(/[^a-zA-Z0-9_-]/g, '_')
+    const outputFilename = `${sanitizedBase}_dubbed${langSuffix}_${Date.now()}.mp4`
+    const outputPath = path.join(exportDir, outputFilename)
+
+    // 2. Configure FFmpeg arguments for lossless stream copy
+    const args = [
+      '-y',
+      '-i', videoPath,         // Input 0: original video
+      '-i', audioPath,         // Input 1: synchronized dubbed audio
+      '-c:v', 'copy',          // Lossless video stream copy (preserves 100% visual quality)
+      '-c:a', 'aac',           // Encode dubbed audio to high-compatibility AAC
+      '-b:a', '192k',          // 192kbps audio bitrate
+      '-map', '0:v:0',         // Take primary video stream from input 0
+      '-map', '1:a:0',         // Take dubbed audio stream from input 1
+      '-shortest',             // End output when shortest stream ends
+      outputPath
+    ]
+
+    return new Promise((resolve, reject) => {
+      let stderrOutput = ''
+      const ffmpegProcess = spawn(ffmpegPath, args)
+
+      ffmpegProcess.stderr.on('data', (d) => {
+        stderrOutput += d.toString()
+      })
+
+      ffmpegProcess.on('error', (err) => {
+        reject(new Error(`Failed to start FFmpeg export process: ${err.message}`))
+      })
+
+      ffmpegProcess.on('close', async (code) => {
+        if (code === 0 && fs.existsSync(outputPath)) {
+          try {
+            const outStat = await fs.promises.stat(outputPath)
+            if (outStat.size === 0) {
+              return reject(new Error('Exported video file is 0 bytes.'))
+            }
+
+            resolve({
+              success: true,
+              outputPath,
+              filename: outputFilename,
+              sizeBytes: outStat.size,
+              format: 'MP4 (H.264 / AAC)'
+            })
+          } catch (statErr) {
+            reject(new Error(`Failed to verify exported video file: ${statErr.message}`))
+          }
+        } else {
+          const errorLines = stderrOutput
+            .trim()
+            .split('\n')
+            .filter((l) => l.trim().length > 0)
+          const lastError =
+            errorLines.slice(-3).join(' ') || `FFmpeg export failed with code ${code}.`
+          reject(new Error(`Video export failed: ${lastError}`))
+        }
+      })
+    })
   }
 }
 

@@ -226,7 +226,7 @@ function DubbingSettings({
 
           <p className="pipeline-notice">
             {hasVideo
-              ? 'Ready for Phase 3 pipeline implementation'
+              ? 'Complete pipeline active: Extract → Transcribe → Translate → Voiceover → Export'
               : 'Select or drop an English video to configure dubbing'}
           </p>
         </div>

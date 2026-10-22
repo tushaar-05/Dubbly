@@ -1,10 +1,11 @@
-import { ipcMain, app } from 'electron'
+import { ipcMain, app, shell } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import videoService from '../services/video'
 import transcriptionService from '../services/transcription'
 import translationService from '../services/translation'
 import ttsService from '../services/tts'
+import timingService from '../services/timing'
 
 /**
  * IPC Handler Registry
@@ -223,6 +224,110 @@ export function registerIpcHandlers() {
 
     const buffer = await fs.promises.readFile(resolvedClipPath)
     return buffer.toString('base64')
+  })
+
+  /**
+   * Video Dubbing & Export Channel (Phase 8)
+   * Channel: 'video:export-dubbed'
+   *
+   * SECURITY & VALIDATION:
+   * Validates videoPath, clips array, and ensures audio clips exist on disk.
+   * Creates synchronized master audio track with timing adjustments,
+   * then combines with original video using lossless stream copy.
+   */
+  ipcMain.handle('video:export-dubbed', async (_, { videoPath, clips, targetLanguage, options } = {}) => {
+    if (!videoPath || typeof videoPath !== 'string') {
+      throw new Error('Invalid video path provided for export.')
+    }
+    if (!fs.existsSync(videoPath)) {
+      throw new Error(`Video file not found at specified path: "${videoPath}"`)
+    }
+    if (!clips || !Array.isArray(clips) || clips.length === 0) {
+      throw new Error('Export failed: No voice clips provided.')
+    }
+    const validClips = clips.filter((c) => c.hasAudio && c.audioPath && fs.existsSync(c.audioPath))
+    if (validClips.length === 0) {
+      throw new Error('Export failed: None of the provided clips contain generated audio files.')
+    }
+
+    // 1. Probe total video duration
+    const totalDuration = await timingService.probeDuration(videoPath)
+
+    // 2. Create synchronized master audio track
+    const masterAudioResult = await timingService.createSynchronizedAudioTrack(
+      validClips,
+      totalDuration,
+      options
+    )
+
+    // 3. Combine original video with synchronized dubbed audio
+    const exportResult = await videoService.combineVideoAndAudio(
+      videoPath,
+      masterAudioResult.masterAudioPath,
+      { language: targetLanguage, ...options }
+    )
+
+    return {
+      ...exportResult,
+      durationSec: totalDuration,
+      targetLanguage: targetLanguage || 'hi',
+      timedClipsCount: masterAudioResult.timedClips,
+      adjustedClipsCount: masterAudioResult.adjustedClipsCount
+    }
+  })
+
+  /**
+   * Read Exported Video for In-App HTML5 Preview (Phase 8)
+   * Channel: 'video:read-exported-video'
+   *
+   * SECURITY ENFORCEMENT:
+   * Only permits reading files located strictly inside Dubbly's designated
+   * temporary exports directory. Rejects directory traversal (../) and arbitrary paths.
+   */
+  ipcMain.handle('video:read-exported-video', async (_, { videoPath } = {}) => {
+    if (!videoPath || typeof videoPath !== 'string') {
+      throw new Error('Invalid video path provided.')
+    }
+
+    const permittedDir = path.resolve(path.join(app.getPath('temp'), 'dubbly_exports'))
+    const resolvedVideoPath = path.resolve(videoPath)
+
+    if (!resolvedVideoPath.startsWith(permittedDir + path.sep)) {
+      throw new Error(
+        'Access denied: Cannot read files outside Dubbly temporary exports directory.'
+      )
+    }
+
+    if (!fs.existsSync(resolvedVideoPath)) {
+      throw new Error('Exported video file does not exist or has been removed.')
+    }
+
+    const buffer = await fs.promises.readFile(resolvedVideoPath)
+    return buffer.toString('base64')
+  })
+
+  /**
+   * Reveal Exported File in macOS Finder / OS File Explorer (Phase 8)
+   * Channel: 'video:show-in-folder'
+   */
+  ipcMain.handle('video:show-in-folder', async (_, { filePath } = {}) => {
+    if (!filePath || typeof filePath !== 'string') {
+      throw new Error('Invalid file path provided.')
+    }
+
+    const baseTemp = app.getPath('temp')
+    const resolvedPath = path.resolve(filePath)
+
+    if (!resolvedPath.startsWith(baseTemp)) {
+      throw new Error('Access denied: Cannot reveal files outside Dubbly working directory.')
+    }
+
+    if (!fs.existsSync(resolvedPath)) {
+      throw new Error('File does not exist.')
+    }
+
+    shell.showItemInFolder(resolvedPath)
+    return true
   })
 }
 

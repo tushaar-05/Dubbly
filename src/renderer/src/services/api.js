@@ -222,6 +222,72 @@ export const apiService = {
       return await window.api.getTtsVoices(language)
     }
     return null
+  },
+
+  /**
+   * Request video dubbing and export (Phase 8)
+   * @param {string} videoPath - Absolute path to original video
+   * @param {Array} clips - Synthesized voice clips
+   * @param {string} targetLanguage - Target language code
+   * @param {object} [options]
+   * @returns {Promise<{
+   *   success: boolean,
+   *   outputPath: string,
+   *   filename: string,
+   *   sizeBytes: number,
+   *   format: string,
+   *   durationSec: number,
+   *   timedClipsCount: number,
+   *   adjustedClipsCount: number
+   * }>}
+   */
+  async exportDubbedVideo(videoPath, clips, targetLanguage, options = {}) {
+    if (!videoPath) {
+      throw new Error('No video path provided for export.')
+    }
+    if (!clips || !Array.isArray(clips) || clips.length === 0) {
+      throw new Error('No voice clips available for video export.')
+    }
+    if (!window.api || typeof window.api.exportDubbedVideo !== 'function') {
+      throw new Error('Electron video export API is unavailable.')
+    }
+    return await window.api.exportDubbedVideo(videoPath, clips, targetLanguage, options)
+  },
+
+  /**
+   * Read exported dubbed video data and return an in-memory browser Blob URL for preview
+   * @param {string} videoPath - Path to exported .mp4 file
+   * @returns {Promise<string>} Blob URL (e.g. blob:http://localhost:5173/...)
+   */
+  async getExportedVideoBlobUrl(videoPath) {
+    if (!videoPath) {
+      throw new Error('No video path provided.')
+    }
+    if (!window.api || typeof window.api.readExportedVideo !== 'function') {
+      throw new Error('Exported video reader API is unavailable.')
+    }
+    const base64Data = await window.api.readExportedVideo(videoPath)
+    const byteCharacters = atob(base64Data)
+    const byteNumbers = new Array(byteCharacters.length)
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i)
+    }
+    const byteArray = new Uint8Array(byteNumbers)
+    const blob = new Blob([byteArray], { type: 'video/mp4' })
+    return URL.createObjectURL(blob)
+  },
+
+  /**
+   * Open exported file in system file explorer (Finder on macOS)
+   * @param {string} filePath
+   * @returns {Promise<boolean>}
+   */
+  async showInFolder(filePath) {
+    if (!filePath) return false
+    if (window.api && typeof window.api.showInFolder === 'function') {
+      return await window.api.showInFolder(filePath)
+    }
+    return false
   }
 }
 

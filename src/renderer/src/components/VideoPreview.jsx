@@ -21,7 +21,11 @@ import {
   Sparkles,
   Languages,
   Mic,
-  Headphones
+  Headphones,
+  Download,
+  Film,
+  FolderOpen,
+  ExternalLink
 } from 'lucide-react'
 import { formatDuration, formatFileSize } from '../utils/formatters'
 import apiService from '../services/api'
@@ -108,6 +112,12 @@ function VideoPreview({
   )
   const [ttsClipBlobs, setTtsClipBlobs] = useState({})
 
+  // Video Dubbing & Export States (Phase 8)
+  const [isExporting, setIsExporting] = useState(false)
+  const [exportResult, setExportResult] = useState(null)
+  const [exportedVideoBlobUrl, setExportedVideoBlobUrl] = useState(null)
+  const [exportError, setExportError] = useState(null)
+
   // Verification Test Result State (prevents test runs from polluting primary workflow errors)
   const [testFeedback, setTestFeedback] = useState(null)
 
@@ -120,7 +130,7 @@ function VideoPreview({
     }
   }, [targetLanguage])
 
-  // Reset playback, extraction, transcription, translation, and TTS states when a new preview URL is loaded
+  // Reset playback, extraction, transcription, translation, TTS, and export states when a new preview URL is loaded
   useEffect(() => {
     setIsPlaying(false)
     setCurrentTime(0)
@@ -134,11 +144,19 @@ function VideoPreview({
     setTranslationError(null)
     setTtsResult(null)
     setTtsError(null)
+    setIsExporting(false)
+    setExportResult(null)
+    setExportError(null)
     setTestFeedback(null)
 
     if (extractedAudioUrl) {
       URL.revokeObjectURL(extractedAudioUrl)
       setExtractedAudioUrl(null)
+    }
+
+    if (exportedVideoBlobUrl) {
+      URL.revokeObjectURL(exportedVideoBlobUrl)
+      setExportedVideoBlobUrl(null)
     }
 
     // Revoke any active TTS clip blob URLs
@@ -148,17 +166,20 @@ function VideoPreview({
     setTtsClipBlobs({})
   }, [previewUrl])
 
-  // Cleanup audio blob URLs on unmount
+  // Cleanup audio & video blob URLs on unmount
   useEffect(() => {
     return () => {
       if (extractedAudioUrl) {
         URL.revokeObjectURL(extractedAudioUrl)
       }
+      if (exportedVideoBlobUrl) {
+        URL.revokeObjectURL(exportedVideoBlobUrl)
+      }
       Object.values(ttsClipBlobs).forEach((url) => {
         if (url) URL.revokeObjectURL(url)
       })
     }
-  }, [extractedAudioUrl, ttsClipBlobs])
+  }, [extractedAudioUrl, exportedVideoBlobUrl, ttsClipBlobs])
 
   const togglePlayPause = () => {
     if (!videoRef.current) return
@@ -390,6 +411,76 @@ function VideoPreview({
   }
 
   /**
+   * Handle Video Dubbing & Export (Phase 8)
+   */
+  const handleExportDubbedVideo = async () => {
+    if (!videoFile) {
+      setExportError('Please select a video file first.')
+      return
+    }
+
+    if (!ttsResult?.clips || ttsResult.clips.length === 0) {
+      setExportError('Cannot export: No voiceover clips available. Please synthesize speech first.')
+      return
+    }
+
+    const videoPath = apiService.getPathForFile(videoFile)
+    if (!videoPath) {
+      setExportError(
+        'Could not access the local filesystem path for this video. Please re-select the file using Browse.'
+      )
+      return
+    }
+
+    try {
+      setIsExporting(true)
+      setExportError(null)
+      setTestFeedback(null)
+
+      if (exportedVideoBlobUrl) {
+        URL.revokeObjectURL(exportedVideoBlobUrl)
+        setExportedVideoBlobUrl(null)
+      }
+
+      const currentLang = translationResult?.targetLanguage || targetLanguage || 'hi'
+      console.log(
+        `[Dubbly] Exporting dubbed video with ${ttsResult.clips.length} voice clips for ${currentLang}...`
+      )
+
+      const result = await apiService.exportDubbedVideo(
+        videoPath,
+        ttsResult.clips,
+        currentLang
+      )
+      console.log('[Dubbly] Video dubbing and export completed successfully:', result)
+
+      setExportResult(result)
+
+      // Retrieve browser Blob URL for in-app video playback preview
+      try {
+        const previewBlobUrl = await apiService.getExportedVideoBlobUrl(result.outputPath)
+        setExportedVideoBlobUrl(previewBlobUrl)
+      } catch (blobErr) {
+        console.warn('Could not load exported video blob URL for preview:', blobErr)
+      }
+    } catch (err) {
+      console.error('[Dubbly] Video export error:', err)
+      setExportError(err.message || 'Failed to synchronize audio and export dubbed video.')
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  /**
+   * Open exported video in system Finder / Explorer
+   */
+  const handleOpenExportFolder = async () => {
+    if (exportResult?.outputPath) {
+      await apiService.showInFolder(exportResult.outputPath)
+    }
+  }
+
+  /**
    * Test Verification Handlers (for grading and testing)
    * Reports results to dedicated testFeedback state without polluting primary workflow error cards.
    */
@@ -499,6 +590,25 @@ function VideoPreview({
         name: 'Empty TTS Segments Test',
         success: true,
         message: `Verified: Safely rejected empty segments ("${summary}")`
+      })
+    }
+  }
+
+  const handleTestExportError = async () => {
+    try {
+      setTestFeedback({ name: 'Export Error Test', running: true, message: 'Testing...' })
+      await apiService.exportDubbedVideo('/invalid/path/non_existent_video.mp4', [])
+      setTestFeedback({
+        name: 'Export Error Test',
+        success: false,
+        message: 'Unexpected: Video export succeeded with invalid video and empty clips.'
+      })
+    } catch (err) {
+      const summary = err.message.replace(/^Error invoking remote method '[^']+': /, '')
+      setTestFeedback({
+        name: 'Export Error Test',
+        success: true,
+        message: `Verified: Safely rejected invalid video/clips ("${summary}")`
       })
     }
   }
@@ -1159,6 +1269,164 @@ function VideoPreview({
         </div>
       )}
 
+      {/* Export Dubbed Video Action Card (Phase 8) */}
+      {ttsResult && ttsResult.clips && ttsResult.clips.length > 0 && !exportResult && (
+        <div className="pipeline-action-card export-card">
+          <div className="pipeline-action-header">
+            <div className="action-title-group">
+              <Film size={20} className="text-primary" />
+              <div>
+                <h3 className="pipeline-action-title">Export Dubbed Video</h3>
+                <p className="pipeline-action-subtitle">
+                  Synchronize {ttsResult.clips.length} voice clips with original video timing and export with lossless video quality.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn-action-primary"
+              onClick={handleExportDubbedVideo}
+              disabled={isExporting}
+            >
+              {isExporting ? (
+                <>
+                  <Loader2 size={15} className="spin-icon" />
+                  <span>Exporting...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles size={15} />
+                  <span>Export Dubbed Video</span>
+                </>
+              )}
+            </button>
+          </div>
+          <div className="export-hint-row">
+            <span className="export-hint-badge">
+              Target: {translationResult?.targetLanguageName || currentLangObj.name}
+            </span>
+            <span className="export-hint-text">
+              Speech clips are aligned to exact start timestamps with silence in pauses. Video quality is 100% preserved.
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Video Dubbing & Export In-Progress Banner */}
+      {isExporting && (
+        <div className="extraction-status-card loading">
+          <Loader2 size={18} className="spin-icon text-primary" />
+          <div className="extraction-status-text">
+            <strong>Synchronizing Audio & Exporting Dubbed Video with FFmpeg...</strong>
+            <span>
+              Aligning voice clips to timestamps, pacing segments, and muxing audio with original video using lossless stream copy.
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Video Export Error Alert Card */}
+      {exportError && (
+        <div className="extraction-status-card error">
+          <div className="status-header-row">
+            <div className="status-title-group">
+              <AlertCircle size={18} className="text-danger" />
+              <strong>Dubbed Video Export Error</strong>
+            </div>
+            <button
+              type="button"
+              className="btn-dismiss"
+              onClick={() => setExportError(null)}
+              title="Dismiss"
+            >
+              <X size={14} />
+            </button>
+          </div>
+          <p className="error-message-text">{exportError}</p>
+        </div>
+      )}
+
+      {/* Exported Dubbed Video Result Card (Phase 8) */}
+      {exportResult && exportedVideoBlobUrl && (
+        <div className="pipeline-result-card exported-video-card">
+          <div className="result-card-header">
+            <div className="result-title-group">
+              <CheckCircle2 size={20} className="text-success" />
+              <div>
+                <h3 className="result-card-title">Dubbed Video Exported Successfully</h3>
+                <p className="result-card-subtitle">
+                  Combined synchronized {exportResult.targetLanguage ? exportResult.targetLanguage.toUpperCase() : ''} audio track with original video without re-encoding.
+                </p>
+              </div>
+            </div>
+            <div className="result-actions-group">
+              <button
+                type="button"
+                className="btn-action-secondary"
+                onClick={handleOpenExportFolder}
+                title="Reveal exported video in Finder"
+              >
+                <FolderOpen size={14} />
+                <span>Show in Folder</span>
+              </button>
+              <button
+                type="button"
+                className="btn-action-secondary"
+                onClick={handleExportDubbedVideo}
+                disabled={isExporting}
+                title="Re-run synchronization and export"
+              >
+                <RefreshCw size={14} />
+                <span>Re-export</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Export Metadata Chips */}
+          <div className="export-metadata-grid">
+            <div className="meta-chip">
+              <span className="meta-chip-label">File:</span>
+              <span className="meta-chip-value" title={exportResult.outputPath}>
+                {exportResult.filename}
+              </span>
+            </div>
+            <div className="meta-chip">
+              <span className="meta-chip-label">Size:</span>
+              <span className="meta-chip-value">{formatFileSize(exportResult.sizeBytes)}</span>
+            </div>
+            <div className="meta-chip">
+              <span className="meta-chip-label">Duration:</span>
+              <span className="meta-chip-value">{formatDuration(exportResult.durationSec)}</span>
+            </div>
+            <div className="meta-chip">
+              <span className="meta-chip-label">Clips:</span>
+              <span className="meta-chip-value">
+                {exportResult.timedClipsCount} synchronized
+                {exportResult.adjustedClipsCount > 0
+                  ? ` (${exportResult.adjustedClipsCount} paced)`
+                  : ''}
+              </span>
+            </div>
+          </div>
+
+          {/* In-App Video Preview Player */}
+          <div className="exported-video-player-container">
+            <div className="exported-player-header">
+              <Film size={14} className="text-primary" />
+              <span>Exported Video Preview (Plays synchronized dubbed audio)</span>
+            </div>
+            <div className="exported-player-frame">
+              <video
+                controls
+                src={exportedVideoBlobUrl}
+                className="exported-video-element"
+                preload="metadata"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Verification Helpers Row */}
       <div className="test-helper-row">
         <span className="test-helper-label">Verification Triggers:</span>
@@ -1166,7 +1434,7 @@ function VideoPreview({
           type="button"
           className="btn-text-link"
           onClick={handleTestInvalidFile}
-          disabled={isExtracting || isTranscribing || isTranslating || isGeneratingTts}
+          disabled={isExtracting || isTranscribing || isTranslating || isGeneratingTts || isExporting}
         >
           Test Invalid File Error
         </button>
@@ -1175,7 +1443,7 @@ function VideoPreview({
           type="button"
           className="btn-text-link"
           onClick={handleTestMissingModel}
-          disabled={!extractionResult || isTranscribing || isTranslating || isGeneratingTts}
+          disabled={!extractionResult || isTranscribing || isTranslating || isGeneratingTts || isExporting}
           title={!extractionResult ? 'Extract audio first to test' : 'Test missing model error'}
         >
           Test Missing Model Error
@@ -1185,7 +1453,7 @@ function VideoPreview({
           type="button"
           className="btn-text-link"
           onClick={handleTestTranslationError}
-          disabled={isTranslating || isGeneratingTts}
+          disabled={isTranslating || isGeneratingTts || isExporting}
           title="Test empty transcript translation error"
         >
           Test Empty Translation Error
@@ -1195,7 +1463,7 @@ function VideoPreview({
           type="button"
           className="btn-text-link"
           onClick={handleTestTtsUnsupportedLang}
-          disabled={isGeneratingTts}
+          disabled={isGeneratingTts || isExporting}
           title="Test unsupported TTS language error"
         >
           Test Unsupported TTS Lang
@@ -1205,10 +1473,20 @@ function VideoPreview({
           type="button"
           className="btn-text-link"
           onClick={handleTestTtsEmptySegments}
-          disabled={isGeneratingTts}
+          disabled={isGeneratingTts || isExporting}
           title="Test empty TTS segments error"
         >
           Test Empty TTS Segments
+        </button>
+        <span className="test-helper-dot">•</span>
+        <button
+          type="button"
+          className="btn-text-link"
+          onClick={handleTestExportError}
+          disabled={isExporting}
+          title="Test video export failure handling"
+        >
+          Test Export Error
         </button>
       </div>
 
