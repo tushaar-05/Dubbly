@@ -1026,6 +1026,55 @@ input:checked + .slider-pill:before {
   cursor: not-allowed;
 }
 
+.test-feedback-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  line-height: 1.4;
+  margin-bottom: 8px;
+  width: 100%;
+}
+
+.test-feedback-pill.running {
+  background-color: #f1f5f9;
+  color: #334155;
+  border: 1px solid #cbd5e1;
+}
+
+.test-feedback-pill.passed {
+  background-color: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.test-feedback-pill.failed {
+  background-color: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+.btn-dismiss-test {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.7;
+  border-radius: 2px;
+  transition: opacity 0.15s ease;
+}
+
+.btn-dismiss-test:hover {
+  opacity: 1;
+}
+
 /* ==========================================================================
    Phase 5: Whisper Transcription & Segment List Styles
    ========================================================================== */
@@ -1368,3 +1417,150 @@ input:checked + .slider-pill:before {
   color: #14532d;
   font-weight: 500;
 }
+
+/* ==========================================================================
+   Phase 7: Text-to-Speech (Edge TTS) Styles
+   ========================================================================== */
+.badge-tts-success {
+  font-size: 11px;
+  font-weight: 600;
+  color: #0369a1;
+  background-color: #e0f2fe;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  border: 1px solid #bae6fd;
+}
+
+.tts-action-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.voice-select-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.voice-select-icon {
+  position: absolute;
+  left: 8px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.tts-voice-select {
+  padding: 5px 10px 5px 26px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-card);
+  background-color: var(--bg-surface);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.tts-voice-select:focus {
+  border-color: var(--color-primary);
+}
+
+.tts-voice-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-tts-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background-color: #0284c7;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(2, 132, 199, 0.2);
+}
+
+.btn-tts-trigger:hover:not(:disabled) {
+  background-color: #0369a1;
+}
+
+.btn-tts-trigger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Segment Voiceover Clip Row */
+.segment-voiceover-row {
+  margin-top: 6px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.voiceover-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.voiceover-label {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.voiceover-voice-tag {
+  background-color: #f1f5f9;
+  color: #0f172a;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.voiceover-size-tag {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.segment-audio-player {
+  height: 28px;
+  flex: 1;
+  min-width: 200px;
+  max-width: 380px;
+}
+
+.btn-play-clip-load {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid #cbd5e1;
+  background-color: #ffffff;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-play-clip-load:hover {
+  background-color: #f8fafc;
+  border-color: #94a3b8;
+}
+

@@ -158,6 +158,70 @@ export const apiService = {
       throw new Error('Electron translation API is unavailable.')
     }
     return await window.api.translateTranscript(segments, targetLanguage)
+  },
+
+  /**
+   * Request voiceover audio generation for translated segments via Edge TTS (Phase 7)
+   * @param {Array} segments - Translated transcript segments
+   * @param {string} targetLanguage - Indian language code (hi, mr, bn, gu, ta, te)
+   * @param {string} [voice] - Optional neural voice identifier
+   * @returns {Promise<{
+   *   success: boolean,
+   *   provider: string,
+   *   targetLanguage: string,
+   *   voice: string,
+   *   totalSegments: number,
+   *   generatedCount: number,
+   *   outputDirectory: string,
+   *   clips: Array<object>
+   * }>}
+   */
+  async generateSpeech(segments, targetLanguage, voice) {
+    if (!segments || !Array.isArray(segments) || segments.length === 0) {
+      throw new Error('Cannot generate speech: No transcript segments available.')
+    }
+    if (!targetLanguage) {
+      throw new Error('No target language specified for voiceover generation.')
+    }
+    if (!window.api || typeof window.api.generateSpeech !== 'function') {
+      throw new Error('Electron TTS generation API is unavailable.')
+    }
+    return await window.api.generateSpeech(segments, targetLanguage, voice)
+  },
+
+  /**
+   * Read generated TTS MP3 audio clip as an in-memory browser Blob URL for playback
+   * @param {string} clipPath - Absolute filesystem path of the .mp3 clip
+   * @returns {Promise<string>} Blob URL (e.g. blob:http://localhost:5173/...)
+   */
+  async getTtsAudioBlobUrl(clipPath) {
+    if (!clipPath) {
+      throw new Error('No audio clip path provided.')
+    }
+    if (!window.api || typeof window.api.readTtsAudioClip !== 'function') {
+      throw new Error('TTS audio reader API is unavailable.')
+    }
+    const base64Data = await window.api.readTtsAudioClip(clipPath)
+    const byteCharacters = atob(base64Data)
+    const byteNumbers = new Array(byteCharacters.length)
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i)
+    }
+    const byteArray = new Uint8Array(byteNumbers)
+    const blob = new Blob([byteArray], { type: 'audio/mpeg' })
+    return URL.createObjectURL(blob)
+  },
+
+  /**
+   * Retrieve available Indian neural voices
+   * @param {string} [language]
+   * @returns {Promise<object>}
+   */
+  async getTtsVoices(language) {
+    if (window.api && typeof window.api.getTtsVoices === 'function') {
+      return await window.api.getTtsVoices(language)
+    }
+    return null
   }
 }
 

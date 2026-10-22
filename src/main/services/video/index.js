@@ -1,7 +1,9 @@
 import { spawn } from 'child_process'
-import { app } from 'electron'
+import electron from 'electron'
+const app = electron && electron.app ? electron.app : electron
 import fs from 'fs'
 import path from 'path'
+import os from 'os'
 
 /**
  * Locate the FFmpeg executable on the host system.
@@ -103,7 +105,8 @@ export const videoService = {
     const ffmpegPath = await findFfmpegBinary()
 
     // 3. Prepare working temporary directory
-    const tempDir = path.join(app.getPath('temp'), 'dubbly_audio')
+    const tempBase = app?.getPath ? app.getPath('temp') : os.tmpdir()
+    const tempDir = path.join(tempBase, 'dubbly_audio')
     await fs.promises.mkdir(tempDir, { recursive: true })
 
     const baseName = path.basename(videoPath, path.extname(videoPath))

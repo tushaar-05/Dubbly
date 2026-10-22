@@ -1,5 +1,6 @@
 import { spawn } from 'child_process'
-import { app } from 'electron'
+import electron from 'electron'
+const app = electron && electron.app ? electron.app : electron
 import fs from 'fs'
 import path from 'path'
 import os from 'os'

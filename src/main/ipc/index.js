@@ -4,6 +4,7 @@ import path from 'path'
 import videoService from '../services/video'
 import transcriptionService from '../services/transcription'
 import translationService from '../services/translation'
+import ttsService from '../services/tts'
 
 /**
  * IPC Handler Registry
@@ -155,6 +156,73 @@ export function registerIpcHandlers() {
     }
 
     return await translationService.translateTranscript(segments, targetLanguage)
+  })
+
+  /**
+   * TTS Voices Configuration Channel (Phase 7)
+   * Channel: 'tts:get-voices'
+   */
+  ipcMain.handle('tts:get-voices', async (_, { language } = {}) => {
+    return ttsService.getVoices(language)
+  })
+
+  /**
+   * TTS Speech Generation Channel (Phase 7)
+   * Channel: 'tts:generate-speech'
+   *
+   * SECURITY & VALIDATION:
+   * Validates segment array and target language.
+   * Generates separate audio clips per segment into Dubbly's designated temporary directory.
+   */
+  ipcMain.handle('tts:generate-speech', async (_, { segments, targetLanguage, voice } = {}) => {
+    if (!segments || !Array.isArray(segments)) {
+      throw new Error('Invalid request: segments must be an array of transcript segments.')
+    }
+
+    if (segments.length === 0) {
+      throw new Error('Empty segments: Cannot generate speech for an empty segment list.')
+    }
+
+    if (!targetLanguage || typeof targetLanguage !== 'string') {
+      throw new Error('Target language code must be provided.')
+    }
+
+    return await ttsService.synthesizeSegments(segments, targetLanguage, { voice })
+  })
+
+  /**
+   * Read Generated TTS Audio Clip Data for In-App Playback (Phase 7)
+   * Channel: 'tts:read-audio-clip'
+   *
+   * SECURITY ENFORCEMENT:
+   * Only permits reading .mp3 or .wav files located strictly inside Dubbly's designated
+   * temporary TTS directory. Rejects directory traversal (../) and arbitrary file paths.
+   */
+  ipcMain.handle('tts:read-audio-clip', async (_, { clipPath } = {}) => {
+    if (!clipPath || typeof clipPath !== 'string') {
+      throw new Error('Invalid audio clip path provided.')
+    }
+
+    const lowerPath = clipPath.toLowerCase()
+    if (!lowerPath.endsWith('.mp3') && !lowerPath.endsWith('.wav')) {
+      throw new Error('Access denied: Only audio files (.mp3, .wav) can be read.')
+    }
+
+    const permittedDir = path.resolve(path.join(app.getPath('temp'), 'dubbly_tts'))
+    const resolvedClipPath = path.resolve(clipPath)
+
+    if (!resolvedClipPath.startsWith(permittedDir + path.sep)) {
+      throw new Error(
+        'Access denied: Cannot read files outside Dubbly temporary TTS directory.'
+      )
+    }
+
+    if (!fs.existsSync(resolvedClipPath)) {
+      throw new Error('Audio clip file does not exist or has been removed.')
+    }
+
+    const buffer = await fs.promises.readFile(resolvedClipPath)
+    return buffer.toString('base64')
   })
 }
 

@@ -82,7 +82,33 @@ const api = {
    * @returns {Promise<object>}
    */
   translateTranscript: (segments, targetLanguage) =>
-    ipcRenderer.invoke('translation:translate-transcript', { segments, targetLanguage })
+    ipcRenderer.invoke('translation:translate-transcript', { segments, targetLanguage }),
+
+  /**
+   * Request voiceover audio generation for translated segments via Edge TTS (Phase 7)
+   * @param {Array} segments - Array of translated segments
+   * @param {string} targetLanguage - Language code (hi, mr, bn, gu, ta, te)
+   * @param {string} [voice] - Optional neural voice identifier
+   * @returns {Promise<object>}
+   */
+  generateSpeech: (segments, targetLanguage, voice) =>
+    ipcRenderer.invoke('tts:generate-speech', { segments, targetLanguage, voice }),
+
+  /**
+   * Read generated TTS MP3 audio clip for safe in-app playback
+   * @param {string} clipPath - Absolute path to .mp3 clip inside temporary dubbly_tts directory
+   * @returns {Promise<string>} Base64-encoded audio data
+   */
+  readTtsAudioClip: (clipPath) =>
+    ipcRenderer.invoke('tts:read-audio-clip', { clipPath }),
+
+  /**
+   * Retrieve available Indian neural voices configuration
+   * @param {string} [language]
+   * @returns {Promise<object>}
+   */
+  getTtsVoices: (language) =>
+    ipcRenderer.invoke('tts:get-voices', { language })
 }
 
 // Expose APIs to renderer only if context isolation is enabled

@@ -20,17 +20,49 @@ import {
   ChevronUp,
   Sparkles,
   Languages,
-  ArrowRight
+  Mic,
+  Headphones
 } from 'lucide-react'
 import { formatDuration, formatFileSize } from '../utils/formatters'
 import apiService from '../services/api'
 import { INDIAN_LANGUAGES } from './DubbingSettings'
 
 /**
+ * Indian Neural Voice Options for Microsoft Edge TTS
+ */
+export const INDIAN_VOICE_CONFIG = {
+  hi: [
+    { id: 'hi-IN-MadhurNeural', name: 'Madhur (Male, Natural)', gender: 'Male' },
+    { id: 'hi-IN-SwaraNeural', name: 'Swara (Female, Expressive)', gender: 'Female' }
+  ],
+  mr: [
+    { id: 'mr-IN-AarohiNeural', name: 'Aarohi (Female, Clear)', gender: 'Female' },
+    { id: 'mr-IN-ManoharNeural', name: 'Manohar (Male, Warm)', gender: 'Male' }
+  ],
+  bn: [
+    { id: 'bn-IN-BashkarNeural', name: 'Bashkar (Male, Natural)', gender: 'Male' },
+    { id: 'bn-IN-TanishaaNeural', name: 'Tanishaa (Female, Soft)', gender: 'Female' }
+  ],
+  gu: [
+    { id: 'gu-IN-DhwaniNeural', name: 'Dhwani (Female, Expressive)', gender: 'Female' },
+    { id: 'gu-IN-NiranjanNeural', name: 'Niranjan (Male, Calm)', gender: 'Male' }
+  ],
+  ta: [
+    { id: 'ta-IN-ValluvarNeural', name: 'Valluvar (Male, Deep)', gender: 'Male' },
+    { id: 'ta-IN-PallaviNeural', name: 'Pallavi (Female, Clear)', gender: 'Female' }
+  ],
+  te: [
+    { id: 'te-IN-MohanNeural', name: 'Mohan (Male, Confident)', gender: 'Male' },
+    { id: 'te-IN-ShrutiNeural', name: 'Shruti (Female, Warm)', gender: 'Female' }
+  ]
+}
+
+/**
  * VideoPreview Component
  * Displays video preview with play/pause controls, progress scrubber,
  * file metadata, replace/remove options, FFmpeg audio extraction,
- * Whisper.cpp speech transcription, and Google Translate multilingual translation.
+ * Whisper.cpp speech transcription, Google Translate multilingual translation,
+ * and Edge TTS voiceover generation.
  */
 function VideoPreview({
   videoFile,
@@ -67,7 +99,28 @@ function VideoPreview({
   const [translationResult, setTranslationResult] = useState(null)
   const [translationError, setTranslationError] = useState(null)
 
-  // Reset playback, extraction, transcription, and translation states when a new preview URL is loaded
+  // Text-to-Speech States (Phase 7)
+  const [isGeneratingTts, setIsGeneratingTts] = useState(false)
+  const [ttsResult, setTtsResult] = useState(null)
+  const [ttsError, setTtsError] = useState(null)
+  const [selectedVoice, setSelectedVoice] = useState(
+    INDIAN_VOICE_CONFIG[targetLanguage]?.[0]?.id || 'hi-IN-MadhurNeural'
+  )
+  const [ttsClipBlobs, setTtsClipBlobs] = useState({})
+
+  // Verification Test Result State (prevents test runs from polluting primary workflow errors)
+  const [testFeedback, setTestFeedback] = useState(null)
+
+  // Update selected voice whenever target language changes
+  useEffect(() => {
+    const langKey = targetLanguage ? targetLanguage.toLowerCase() : 'hi'
+    const available = INDIAN_VOICE_CONFIG[langKey]
+    if (available && available.length > 0) {
+      setSelectedVoice(available[0].id)
+    }
+  }, [targetLanguage])
+
+  // Reset playback, extraction, transcription, translation, and TTS states when a new preview URL is loaded
   useEffect(() => {
     setIsPlaying(false)
     setCurrentTime(0)
@@ -79,21 +132,33 @@ function VideoPreview({
     setTranscriptionError(null)
     setTranslationResult(null)
     setTranslationError(null)
+    setTtsResult(null)
+    setTtsError(null)
+    setTestFeedback(null)
 
     if (extractedAudioUrl) {
       URL.revokeObjectURL(extractedAudioUrl)
       setExtractedAudioUrl(null)
     }
+
+    // Revoke any active TTS clip blob URLs
+    Object.values(ttsClipBlobs).forEach((url) => {
+      if (url) URL.revokeObjectURL(url)
+    })
+    setTtsClipBlobs({})
   }, [previewUrl])
 
-  // Cleanup audio blob URL on unmount
+  // Cleanup audio blob URLs on unmount
   useEffect(() => {
     return () => {
       if (extractedAudioUrl) {
         URL.revokeObjectURL(extractedAudioUrl)
       }
+      Object.values(ttsClipBlobs).forEach((url) => {
+        if (url) URL.revokeObjectURL(url)
+      })
     }
-  }, [extractedAudioUrl])
+  }, [extractedAudioUrl, ttsClipBlobs])
 
   const togglePlayPause = () => {
     if (!videoRef.current) return
@@ -169,7 +234,15 @@ function VideoPreview({
   const handleExtractAudio = async () => {
     try {
       setIsExtracting(true)
+      // Clear stale errors & downstream pipeline outputs
       setExtractionError(null)
+      setTranscriptionError(null)
+      setTranslationError(null)
+      setTtsError(null)
+      setTranscriptResult(null)
+      setTranslationResult(null)
+      setTtsResult(null)
+      setTestFeedback(null)
 
       const videoPath = apiService.getPathForFile(videoFile)
       if (!videoPath) {
@@ -207,7 +280,13 @@ function VideoPreview({
 
     try {
       setIsTranscribing(true)
+      // Clear stale transcription and downstream errors
       setTranscriptionError(null)
+      setTranslationError(null)
+      setTtsError(null)
+      setTranslationResult(null)
+      setTtsResult(null)
+      setTestFeedback(null)
 
       console.log('[Dubbly] Requesting whisper.cpp transcription for:', extractionResult.outputPath)
       const result = await apiService.transcribeAudio(extractionResult.outputPath)
@@ -229,13 +308,17 @@ function VideoPreview({
     const lang = langCodeToUse || targetLanguage || 'hi'
 
     if (!transcriptResult?.segments || transcriptResult.segments.length === 0) {
-      setTranslationError('Please transcribe audio first before attempting translation.')
+      setTranslationError('Cannot translate: No transcript segments available. Please transcribe speech first.')
       return
     }
 
     try {
       setIsTranslating(true)
+      // Clear downstream errors
       setTranslationError(null)
+      setTtsError(null)
+      setTtsResult(null)
+      setTestFeedback(null)
 
       console.log(`[Dubbly] Translating transcript into ${lang}...`)
       const result = await apiService.translateTranscript(transcriptResult.segments, lang)
@@ -251,47 +334,178 @@ function VideoPreview({
   }
 
   /**
+   * Handle Voiceover Speech Generation (Phase 7)
+   */
+  const handleGenerateSpeech = async (customVoice) => {
+    if (!translationResult?.segments || translationResult.segments.length === 0) {
+      setTtsError('Cannot generate speech: No translated segments available. Please translate transcript first.')
+      return
+    }
+
+    const currentVoiceOptions = INDIAN_VOICE_CONFIG[translationResult.targetLanguage] || []
+    const voiceToUse =
+      customVoice || selectedVoice || currentVoiceOptions[0]?.id || 'hi-IN-MadhurNeural'
+
+    try {
+      setIsGeneratingTts(true)
+      setTtsError(null)
+      setTestFeedback(null)
+
+      console.log(
+        `[Dubbly] Generating TTS speech with voice "${voiceToUse}" for language ${translationResult.targetLanguage}...`
+      )
+      const result = await apiService.generateSpeech(
+        translationResult.segments,
+        translationResult.targetLanguage,
+        voiceToUse
+      )
+      console.log('[Dubbly] TTS generation completed successfully:', result)
+
+      // Preload in-memory blob URLs for instant segment playback
+      const newBlobUrls = {}
+      for (const clip of result.clips) {
+        if (clip.hasAudio && clip.audioPath) {
+          try {
+            const blobUrl = await apiService.getTtsAudioBlobUrl(clip.audioPath)
+            newBlobUrls[clip.id] = blobUrl
+          } catch (blobErr) {
+            console.warn(`Could not load audio blob for clip #${clip.id}:`, blobErr)
+          }
+        }
+      }
+
+      // Revoke any previous TTS clip blobs
+      Object.values(ttsClipBlobs).forEach((url) => {
+        if (url) URL.revokeObjectURL(url)
+      })
+
+      setTtsClipBlobs(newBlobUrls)
+      setTtsResult(result)
+    } catch (err) {
+      console.error('[Dubbly] TTS generation error:', err)
+      setTtsError(err.message || 'Failed to generate voiceover audio.')
+    } finally {
+      setIsGeneratingTts(false)
+    }
+  }
+
+  /**
    * Test Verification Handlers (for grading and testing)
+   * Reports results to dedicated testFeedback state without polluting primary workflow error cards.
    */
   const handleTestInvalidFile = async () => {
     try {
-      setIsExtracting(true)
-      setExtractionError(null)
+      setTestFeedback({ name: 'Invalid File Test', running: true, message: 'Testing...' })
       await apiService.extractAudio('/invalid/path/non_existent_video.mp4')
+      setTestFeedback({
+        name: 'Invalid File Test',
+        success: false,
+        message: 'Unexpected: Audio extraction succeeded for non-existent file.'
+      })
     } catch (err) {
-      setExtractionError(err.message)
-    } finally {
-      setIsExtracting(false)
+      const summary = err.message.replace(/^Error invoking remote method '[^']+': /, '')
+      setTestFeedback({
+        name: 'Invalid File Test',
+        success: true,
+        message: `Verified: Safely rejected invalid file ("${summary}")`
+      })
     }
   }
 
   const handleTestMissingModel = async () => {
-    if (!extractionResult?.outputPath) return
+    if (!extractionResult?.outputPath) {
+      setTestFeedback({
+        name: 'Missing Model Test',
+        success: false,
+        message: 'Notice: Extract audio first before running this test.'
+      })
+      return
+    }
+
     try {
-      setIsTranscribing(true)
-      setTranscriptionError(null)
-      await apiService.transcribeAudio(extractionResult.outputPath, '/invalid/models/missing_model.bin')
+      setTestFeedback({ name: 'Missing Model Test', running: true, message: 'Testing...' })
+      await apiService.transcribeAudio(
+        extractionResult.outputPath,
+        '/invalid/models/missing_model.bin'
+      )
+      setTestFeedback({
+        name: 'Missing Model Test',
+        success: false,
+        message: 'Unexpected: Transcription succeeded with non-existent model.'
+      })
     } catch (err) {
-      setTranscriptionError(err.message)
-    } finally {
-      setIsTranscribing(false)
+      const summary = err.message.replace(/^Error invoking remote method '[^']+': /, '')
+      setTestFeedback({
+        name: 'Missing Model Test',
+        success: true,
+        message: `Verified: Safely rejected missing model ("${summary}")`
+      })
     }
   }
 
   const handleTestTranslationError = async () => {
     try {
-      setIsTranslating(true)
-      setTranslationError(null)
-      // Test with empty segments to verify validation
+      setTestFeedback({ name: 'Empty Translation Test', running: true, message: 'Testing...' })
       await apiService.translateTranscript([], 'hi')
+      setTestFeedback({
+        name: 'Empty Translation Test',
+        success: false,
+        message: 'Unexpected: Translation succeeded for empty segments.'
+      })
     } catch (err) {
-      setTranslationError(err.message)
-    } finally {
-      setIsTranslating(false)
+      const summary = err.message.replace(/^Error invoking remote method '[^']+': /, '')
+      setTestFeedback({
+        name: 'Empty Translation Test',
+        success: true,
+        message: `Verified: Safely rejected empty transcript ("${summary}")`
+      })
     }
   }
 
-  const currentLangObj = INDIAN_LANGUAGES.find((l) => l.code === targetLanguage) || INDIAN_LANGUAGES[0]
+  const handleTestTtsUnsupportedLang = async () => {
+    try {
+      setTestFeedback({ name: 'Unsupported TTS Lang Test', running: true, message: 'Testing...' })
+      await apiService.generateSpeech(
+        [{ id: 0, text: 'Hello', translatedText: 'Bonjour' }],
+        'fr'
+      )
+      setTestFeedback({
+        name: 'Unsupported TTS Lang Test',
+        success: false,
+        message: 'Unexpected: TTS succeeded for unsupported language "fr".'
+      })
+    } catch (err) {
+      const summary = err.message.replace(/^Error invoking remote method '[^']+': /, '')
+      setTestFeedback({
+        name: 'Unsupported TTS Lang Test',
+        success: true,
+        message: `Verified: Safely rejected unsupported language ("${summary}")`
+      })
+    }
+  }
+
+  const handleTestTtsEmptySegments = async () => {
+    try {
+      setTestFeedback({ name: 'Empty TTS Segments Test', running: true, message: 'Testing...' })
+      await apiService.generateSpeech([], 'hi')
+      setTestFeedback({
+        name: 'Empty TTS Segments Test',
+        success: false,
+        message: 'Unexpected: TTS succeeded for empty segments.'
+      })
+    } catch (err) {
+      const summary = err.message.replace(/^Error invoking remote method '[^']+': /, '')
+      setTestFeedback({
+        name: 'Empty TTS Segments Test',
+        success: true,
+        message: `Verified: Safely rejected empty segments ("${summary}")`
+      })
+    }
+  }
+
+  const currentLangObj =
+    INDIAN_LANGUAGES.find((l) => l.code === targetLanguage) || INDIAN_LANGUAGES[0]
+  const currentVoiceOptions = INDIAN_VOICE_CONFIG[targetLanguage] || []
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0
 
   return (
@@ -612,8 +826,16 @@ function VideoPreview({
                   type="button"
                   className="btn-translate-trigger"
                   onClick={() => handleTranslate()}
-                  disabled={isTranslating}
-                  title={`Translate transcript into ${currentLangObj.name}`}
+                  disabled={
+                    isTranslating ||
+                    !transcriptResult?.segments ||
+                    transcriptResult.segments.length === 0
+                  }
+                  title={
+                    !transcriptResult?.segments || transcriptResult.segments.length === 0
+                      ? 'No speech segments detected in this audio'
+                      : `Translate transcript into ${currentLangObj.name}`
+                  }
                 >
                   {isTranslating ? (
                     <>
@@ -732,13 +954,69 @@ function VideoPreview({
               </strong>
               <span className="badge-lang-native">{translationResult.targetLanguageNative}</span>
               <span className="badge-count">{translationResult.segmentCount} segments</span>
+              {ttsResult && (
+                <span className="badge-tts-success">
+                  {ttsResult.generatedCount} voice clips ready
+                </span>
+              )}
             </div>
 
             <div className="translation-header-actions">
+              {/* Edge TTS Voice Selection (Phase 7) */}
+              <div className="tts-action-controls">
+                <div className="voice-select-wrapper">
+                  <Mic size={13} className="voice-select-icon" />
+                  <select
+                    className="tts-voice-select"
+                    value={selectedVoice}
+                    onChange={(e) => setSelectedVoice(e.target.value)}
+                    disabled={isGeneratingTts}
+                    title="Select Indian Neural Voice for Edge TTS"
+                  >
+                    {currentVoiceOptions.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <button
+                  type="button"
+                  className="btn-tts-trigger"
+                  onClick={() => handleGenerateSpeech()}
+                  disabled={
+                    isGeneratingTts ||
+                    !translationResult?.segments ||
+                    translationResult.segments.length === 0
+                  }
+                  title={
+                    !translationResult?.segments || translationResult.segments.length === 0
+                      ? 'No translated segments available to synthesize'
+                      : 'Generate voiceover audio clips for each segment via Edge TTS'
+                  }
+                >
+                  {isGeneratingTts ? (
+                    <>
+                      <Loader2 size={13} className="spin-icon" />
+                      <span>Generating Audio...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={13} />
+                      <span>Generate Voiceover</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
               <button
                 type="button"
                 className="btn-dismiss"
-                onClick={() => setTranslationResult(null)}
+                onClick={() => {
+                  setTranslationResult(null)
+                  setTtsResult(null)
+                }}
                 title="Dismiss translation"
               >
                 <X size={14} />
@@ -747,36 +1025,116 @@ function VideoPreview({
           </div>
 
           <div className="comparison-segments-list">
-            {translationResult.segments.map((seg) => (
-              <div key={seg.id} className="comparison-segment-card">
-                <div className="comparison-segment-header">
-                  <div className="segment-time-badge" title={`Duration: ${seg.durationSec}s`}>
-                    <Clock size={11} />
-                    <span>{seg.startTime.split(',')[0]} → {seg.endTime.split(',')[0]}</span>
-                  </div>
-                  <span className="segment-id-tag">Segment #{seg.id}</span>
-                </div>
+            {translationResult.segments.map((seg) => {
+              const clip = ttsResult?.clips?.find((c) => c.id === seg.id)
+              const blobUrl = ttsClipBlobs[seg.id]
 
-                <div className="comparison-dual-columns">
-                  {/* English Original */}
-                  <div className="comparison-col original">
-                    <span className="lang-label">English (Original)</span>
-                    <p className="segment-text">{seg.originalText || '(Silence)'}</p>
+              return (
+                <div key={seg.id} className="comparison-segment-card">
+                  <div className="comparison-segment-header">
+                    <div className="segment-time-badge" title={`Duration: ${seg.durationSec}s`}>
+                      <Clock size={11} />
+                      <span>{seg.startTime.split(',')[0]} → {seg.endTime.split(',')[0]}</span>
+                    </div>
+                    <span className="segment-id-tag">Segment #{seg.id}</span>
                   </div>
 
-                  {/* Indian Language Translated */}
-                  <div className="comparison-col translated">
-                    <span className="lang-label highlight">
-                      {translationResult.targetLanguageName} ({translationResult.targetLanguageNative})
-                    </span>
-                    <p className="segment-text translated-content">
-                      {seg.translatedText || '(Silence)'}
-                    </p>
+                  <div className="comparison-dual-columns">
+                    {/* English Original */}
+                    <div className="comparison-col original">
+                      <span className="lang-label">English (Original)</span>
+                      <p className="segment-text">{seg.originalText || '(Silence)'}</p>
+                    </div>
+
+                    {/* Indian Language Translated */}
+                    <div className="comparison-col translated">
+                      <span className="lang-label highlight">
+                        {translationResult.targetLanguageName} ({translationResult.targetLanguageNative})
+                      </span>
+                      <p className="segment-text translated-content">
+                        {seg.translatedText || '(Silence)'}
+                      </p>
+                    </div>
                   </div>
+
+                  {/* Generated TTS Voiceover Audio Clip (Phase 7) */}
+                  {clip && clip.hasAudio && (
+                    <div className="segment-voiceover-row">
+                      <div className="voiceover-meta">
+                        <Headphones size={13} className="text-primary" />
+                        <span className="voiceover-label">Voiceover Clip:</span>
+                        <span className="voiceover-voice-tag">
+                          {clip.voice.split('-')[2] || clip.voice}
+                        </span>
+                        <span className="voiceover-size-tag">
+                          {formatFileSize(clip.sizeBytes)}
+                        </span>
+                      </div>
+
+                      {blobUrl ? (
+                        <audio
+                          controls
+                          src={blobUrl}
+                          className="segment-audio-player"
+                          preload="metadata"
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn-play-clip-load"
+                          onClick={async () => {
+                            try {
+                              const url = await apiService.getTtsAudioBlobUrl(clip.audioPath)
+                              setTtsClipBlobs((prev) => ({ ...prev, [seg.id]: url }))
+                            } catch (err) {
+                              console.error('Failed to load clip blob:', err)
+                            }
+                          }}
+                        >
+                          <Play size={12} />
+                          <span>Load Audio</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
+        </div>
+      )}
+
+      {/* TTS In-Progress Banner */}
+      {isGeneratingTts && (
+        <div className="extraction-status-card loading">
+          <Loader2 size={18} className="spin-icon text-primary" />
+          <div className="extraction-status-text">
+            <strong>Synthesizing Voiceover with Edge TTS...</strong>
+            <span>
+              Generating high-quality Indian neural voice clips for {translationResult?.targetLanguageName} segments.
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Text-to-Speech Error Alert Card */}
+      {ttsError && (
+        <div className="extraction-status-card error">
+          <div className="status-header-row">
+            <div className="status-title-group">
+              <AlertCircle size={18} className="text-danger" />
+              <strong>Text-to-Speech Error</strong>
+            </div>
+            <button
+              type="button"
+              className="btn-dismiss"
+              onClick={() => setTtsError(null)}
+              title="Dismiss"
+            >
+              <X size={14} />
+            </button>
+          </div>
+          <p className="error-message-text">{ttsError}</p>
         </div>
       )}
 
@@ -808,7 +1166,7 @@ function VideoPreview({
           type="button"
           className="btn-text-link"
           onClick={handleTestInvalidFile}
-          disabled={isExtracting || isTranscribing || isTranslating}
+          disabled={isExtracting || isTranscribing || isTranslating || isGeneratingTts}
         >
           Test Invalid File Error
         </button>
@@ -817,7 +1175,7 @@ function VideoPreview({
           type="button"
           className="btn-text-link"
           onClick={handleTestMissingModel}
-          disabled={!extractionResult || isTranscribing || isTranslating}
+          disabled={!extractionResult || isTranscribing || isTranslating || isGeneratingTts}
           title={!extractionResult ? 'Extract audio first to test' : 'Test missing model error'}
         >
           Test Missing Model Error
@@ -827,12 +1185,55 @@ function VideoPreview({
           type="button"
           className="btn-text-link"
           onClick={handleTestTranslationError}
-          disabled={isTranslating}
+          disabled={isTranslating || isGeneratingTts}
           title="Test empty transcript translation error"
         >
           Test Empty Translation Error
         </button>
+        <span className="test-helper-dot">•</span>
+        <button
+          type="button"
+          className="btn-text-link"
+          onClick={handleTestTtsUnsupportedLang}
+          disabled={isGeneratingTts}
+          title="Test unsupported TTS language error"
+        >
+          Test Unsupported TTS Lang
+        </button>
+        <span className="test-helper-dot">•</span>
+        <button
+          type="button"
+          className="btn-text-link"
+          onClick={handleTestTtsEmptySegments}
+          disabled={isGeneratingTts}
+          title="Test empty TTS segments error"
+        >
+          Test Empty TTS Segments
+        </button>
       </div>
+
+      {/* Verification Test Result Feedback (displayed separately from main workflow error cards) */}
+      {testFeedback && (
+        <div
+          className={`test-feedback-pill ${
+            testFeedback.running ? 'running' : testFeedback.success ? 'passed' : 'failed'
+          }`}
+        >
+          <span className="test-feedback-text">
+            <strong>{testFeedback.name}:</strong> {testFeedback.message}
+          </span>
+          {!testFeedback.running && (
+            <button
+              type="button"
+              className="btn-dismiss-test"
+              onClick={() => setTestFeedback(null)}
+              title="Dismiss test result"
+            >
+              <X size={12} />
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }
