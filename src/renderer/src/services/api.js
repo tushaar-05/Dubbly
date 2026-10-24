@@ -343,6 +343,66 @@ export const apiService = {
       throw new Error('Electron subtitle preview API is unavailable.')
     }
     return await window.api.generateSubtitlesPreview(segments, format, options)
+  },
+
+  /**
+   * Detect visible on-screen text inside video using Tesseract OCR (Phase 11)
+   * @param {string} videoPath - Absolute video file path
+   * @param {object} [options] - Options (intervalSec)
+   * @returns {Promise<{
+   *   success: boolean,
+   *   count: number,
+   *   items: Array<object>,
+   *   intervalSec: number,
+   *   sampledFrames: number,
+   *   message?: string
+   * }>}
+   */
+  async detectVideoText(videoPath, options = {}) {
+    if (!videoPath) {
+      throw new Error('Cannot detect text: No video file path provided.')
+    }
+    if (!window.api || typeof window.api.detectVideoText !== 'function') {
+      throw new Error('Electron OCR detection API is unavailable.')
+    }
+    return await window.api.detectVideoText(videoPath, options)
+  },
+
+  /**
+   * Translate detected on-screen text items into target Indian language (Phase 11)
+   * @param {Array<object>} items - Detected OCR items
+   * @param {string} targetLanguage - Target language code (hi, mr, bn, gu, ta, te)
+   * @returns {Promise<{
+   *   success: boolean,
+   *   targetLanguage: string,
+   *   targetLanguageName: string,
+   *   count: number,
+   *   items: Array<object>
+   * }>}
+   */
+  async translateOcrText(items, targetLanguage) {
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      throw new Error('No on-screen text items provided for translation.')
+    }
+    if (!targetLanguage) {
+      throw new Error('No target language specified for on-screen text translation.')
+    }
+    if (!window.api || typeof window.api.translateOcrText !== 'function') {
+      throw new Error('Electron OCR translation API is unavailable.')
+    }
+    return await window.api.translateOcrText(items, targetLanguage)
+  },
+
+  /**
+   * Listen to OCR detection and translation progress events (Phase 11)
+   * @param {Function} callback
+   * @returns {Function} Unsubscribe
+   */
+  onOcrProgress(callback) {
+    if (window.api && typeof window.api.onOcrProgress === 'function') {
+      return window.api.onOcrProgress(callback)
+    }
+    return () => {}
   }
 }
 

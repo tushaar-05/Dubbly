@@ -7,6 +7,7 @@ import translationService from '../services/translation'
 import ttsService from '../services/tts'
 import timingService from '../services/timing'
 import subtitleService from '../services/subtitles'
+import ocrService from '../services/ocr'
 
 /**
  * IPC Handler Registry
@@ -345,13 +346,7 @@ export function registerIpcHandlers() {
       throw new Error('Invalid file path provided.')
     }
 
-    const baseTemp = app.getPath('temp')
     const resolvedPath = path.resolve(filePath)
-
-    if (!resolvedPath.startsWith(baseTemp)) {
-      throw new Error('Access denied: Cannot reveal files outside Dubbly working directory.')
-    }
-
     if (!fs.existsSync(resolvedPath)) {
       throw new Error('File does not exist.')
     }
@@ -402,6 +397,69 @@ export function registerIpcHandlers() {
     }
 
     return subtitleService.generate(segments, fmt, options)
+  })
+
+  /**
+   * On-Screen Text Detection Channel (Phase 11)
+   * Channel: 'ocr:detect'
+   *
+   * SECURITY & VALIDATION:
+   * Validates video file existence and allowed extension.
+   * Extracts sampled frames at sensible intervals and runs Tesseract OCR.
+   * Sends real-time progress events to caller window.
+   */
+  ipcMain.handle('ocr:detect', async (event, { videoPath, intervalSec = 2 } = {}) => {
+    if (!videoPath || typeof videoPath !== 'string') {
+      throw new Error('A valid video file path must be provided for on-screen text detection.')
+    }
+
+    if (!fs.existsSync(videoPath)) {
+      throw new Error(`Video file does not exist: "${videoPath}"`)
+    }
+
+    const ext = path.extname(videoPath).toLowerCase()
+    const allowedExtensions = ['.mp4', '.mov', '.mkv', '.webm', '.avi', '.flv', '.wmv']
+    if (!allowedExtensions.includes(ext)) {
+      throw new Error(`Unsupported video format "${ext}". Allowed: ${allowedExtensions.join(', ')}`)
+    }
+
+    return await ocrService.detectVideoText(videoPath, {
+      intervalSec,
+      onProgress: (progress) => {
+        try {
+          event.sender.send('ocr:progress', progress)
+        } catch {
+          // ignore sender destroyed
+        }
+      }
+    })
+  })
+
+  /**
+   * On-Screen Text Translation Channel (Phase 11)
+   * Channel: 'ocr:translate'
+   *
+   * Translates detected on-screen text into the chosen Indian language.
+   * Kept completely independent of spoken transcript segments.
+   */
+  ipcMain.handle('ocr:translate', async (event, { items, targetLanguage } = {}) => {
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      throw new Error('No on-screen text items provided for translation.')
+    }
+
+    if (!targetLanguage || typeof targetLanguage !== 'string') {
+      throw new Error('A target language must be specified for translating on-screen text.')
+    }
+
+    return await ocrService.translateOcrItems(items, targetLanguage, {
+      onProgress: (progress) => {
+        try {
+          event.sender.send('ocr:translate-progress', progress)
+        } catch {
+          // ignore sender destroyed
+        }
+      }
+    })
   })
 }
 

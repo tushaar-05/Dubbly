@@ -178,7 +178,54 @@ const api = {
    * @returns {Promise<string>}
    */
   generateSubtitlesPreview: (segments, format, options) =>
-    ipcRenderer.invoke('subtitles:generate-preview', { segments, format, options })
+    ipcRenderer.invoke('subtitles:generate-preview', { segments, format, options }),
+
+  /**
+   * Detect visible on-screen text inside video using Tesseract OCR (Phase 11)
+   * @param {string} videoPath - Absolute video file path
+   * @param {object} [options] - Options (intervalSec)
+   * @returns {Promise<{
+   *   success: boolean,
+   *   count: number,
+   *   items: Array<object>,
+   *   intervalSec: number,
+   *   sampledFrames: number,
+   *   message?: string
+   * }>}
+   */
+  detectVideoText: (videoPath, options) =>
+    ipcRenderer.invoke('ocr:detect', { videoPath, ...options }),
+
+  /**
+   * Translate detected on-screen text into the target language (Phase 11)
+   * @param {Array<object>} items - Detected OCR items
+   * @param {string} targetLanguage - Target language code (hi, mr, bn, gu, ta, te)
+   * @returns {Promise<{
+   *   success: boolean,
+   *   targetLanguage: string,
+   *   targetLanguageName: string,
+   *   count: number,
+   *   items: Array<object>
+   * }>}
+   */
+  translateOcrText: (items, targetLanguage) =>
+    ipcRenderer.invoke('ocr:translate', { items, targetLanguage }),
+
+  /**
+   * Subscribe to OCR detection and translation progress updates (Phase 11)
+   * @param {Function} callback - Progress listener
+   * @returns {Function} Unsubscribe function
+   */
+  onOcrProgress: (callback) => {
+    if (typeof callback !== 'function') return () => {}
+    const listener = (_, data) => callback(data)
+    ipcRenderer.on('ocr:progress', listener)
+    ipcRenderer.on('ocr:translate-progress', listener)
+    return () => {
+      ipcRenderer.removeListener('ocr:progress', listener)
+      ipcRenderer.removeListener('ocr:translate-progress', listener)
+    }
+  }
 }
 
 // Expose APIs to renderer only if context isolation is enabled
