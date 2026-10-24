@@ -6,6 +6,7 @@ import transcriptionService from '../services/transcription'
 import translationService from '../services/translation'
 import ttsService from '../services/tts'
 import timingService from '../services/timing'
+import subtitleService from '../services/subtitles'
 
 /**
  * IPC Handler Registry
@@ -357,6 +358,50 @@ export function registerIpcHandlers() {
 
     shell.showItemInFolder(resolvedPath)
     return true
+  })
+
+  /**
+   * Subtitle Export Channel (Phase 10)
+   * Channel: 'subtitles:export'
+   *
+   * SECURITY & VALIDATION:
+   * Validates segments array, format ('srt'|'vtt'), and timestamps.
+   * Prompts user via native Save Dialog or writes to safe destination path.
+   */
+  ipcMain.handle('subtitles:export', async (_, { segments, format = 'srt', options = {} } = {}) => {
+    if (!segments || !Array.isArray(segments)) {
+      throw new Error('Invalid request: segments must be an array of subtitle segments.')
+    }
+
+    if (segments.length === 0) {
+      throw new Error(
+        'Cannot export subtitles: No transcript segments available. Please transcribe and translate audio first.'
+      )
+    }
+
+    const fmt = (format || 'srt').toLowerCase()
+    if (fmt !== 'srt' && fmt !== 'vtt') {
+      throw new Error(`Unsupported subtitle format "${format}". Only "srt" and "vtt" are supported.`)
+    }
+
+    return await subtitleService.exportSubtitles(segments, fmt, options)
+  })
+
+  /**
+   * Subtitle Content Preview Channel (Phase 10)
+   * Channel: 'subtitles:generate-preview'
+   */
+  ipcMain.handle('subtitles:generate-preview', async (_, { segments, format = 'srt', options = {} } = {}) => {
+    if (!segments || !Array.isArray(segments) || segments.length === 0) {
+      throw new Error('Cannot generate subtitles: No segments provided.')
+    }
+
+    const fmt = (format || 'srt').toLowerCase()
+    if (fmt !== 'srt' && fmt !== 'vtt') {
+      throw new Error(`Unsupported subtitle format "${format}". Only "srt" and "vtt" are supported.`)
+    }
+
+    return subtitleService.generate(segments, fmt, options)
   })
 }
 

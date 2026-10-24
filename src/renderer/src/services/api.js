@@ -300,6 +300,49 @@ export const apiService = {
       return window.api.onProgress(callback)
     }
     return () => {}
+  },
+
+  /**
+   * Export translated script subtitles to SRT or WebVTT format (Phase 10)
+   * @param {Array} segments - Translated transcript segments
+   * @param {'srt'|'vtt'} [format='srt'] - Subtitle format
+   * @param {object} [options] - Export options
+   * @returns {Promise<{
+   *   success: boolean,
+   *   canceled?: boolean,
+   *   format: string,
+   *   filePath: string,
+   *   filename: string,
+   *   sizeBytes: number,
+   *   segmentCount: number,
+   *   content: string
+   * }>}
+   */
+  async exportSubtitles(segments, format = 'srt', options = {}) {
+    if (!segments || !Array.isArray(segments) || segments.length === 0) {
+      throw new Error('Cannot export subtitles: No transcript segments available.')
+    }
+    if (!window.api || typeof window.api.exportSubtitles !== 'function') {
+      throw new Error('Electron subtitle export API is unavailable.')
+    }
+    return await window.api.exportSubtitles(segments, format, options)
+  },
+
+  /**
+   * Generate subtitle text for in-app preview without writing to disk (Phase 10)
+   * @param {Array} segments
+   * @param {'srt'|'vtt'} [format='srt']
+   * @param {object} [options]
+   * @returns {Promise<string>}
+   */
+  async generateSubtitlesPreview(segments, format = 'srt', options = {}) {
+    if (!segments || !Array.isArray(segments) || segments.length === 0) {
+      throw new Error('Cannot preview subtitles: No transcript segments provided.')
+    }
+    if (!window.api || typeof window.api.generateSubtitlesPreview !== 'function') {
+      throw new Error('Electron subtitle preview API is unavailable.')
+    }
+    return await window.api.generateSubtitlesPreview(segments, format, options)
   }
 }
 

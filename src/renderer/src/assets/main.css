@@ -1973,5 +1973,190 @@ input:checked + .slider-pill:before {
   cursor: not-allowed;
 }
 
+/* ==========================================================================
+   Phase 10: Subtitle Export (SRT & WebVTT)
+   ========================================================================== */
+
+.subtitles-export-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  background-color: var(--bg-hover);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-sm);
+  margin-bottom: 12px;
+}
+
+.subtitles-bar-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 240px;
+}
+
+.subtitles-bar-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.subtitles-bar-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.subtitles-bar-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.subtitles-btn-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-subtitles-export {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 13px;
+  border-radius: var(--radius-sm);
+  border: 1px solid #cbd5e1;
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.btn-subtitles-export:hover:not(:disabled) {
+  background-color: #f8fafc;
+  border-color: #94a3b8;
+  color: #0284c7;
+  transform: translateY(-1px);
+}
+
+.btn-subtitles-export:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.subtitle-success-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  background-color: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: var(--radius-sm);
+  margin-bottom: 12px;
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+.subtitle-success-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.subtitle-success-text {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #065f46;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.subtitle-success-text strong {
+  font-weight: 600;
+}
+
+.subtitle-success-text span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #047857;
+}
+
+.subtitle-success-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.btn-open-subtitle-folder {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid #6ee7b7;
+  background-color: #ffffff;
+  color: #065f46;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-open-subtitle-folder:hover {
+  background-color: #d1fae5;
+  border-color: #34d399;
+}
+
+.btn-dismiss-subtitle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-dismiss-subtitle:hover {
+  color: #0f172a;
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.subtitle-error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-sm);
+  margin-bottom: 12px;
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+.subtitle-error-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #991b1b;
+  font-weight: 500;
+}
+
+
 
 

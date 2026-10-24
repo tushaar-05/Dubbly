@@ -149,7 +149,36 @@ const api = {
     return () => {
       ipcRenderer.removeListener('pipeline:progress', listener)
     }
-  }
+  },
+
+  /**
+   * Export translated script subtitles to SRT or WebVTT format (Phase 10)
+   * @param {Array} segments - Translated transcript segments
+   * @param {'srt'|'vtt'} [format='srt'] - Subtitle format
+   * @param {object} [options] - Export options (videoName, targetLanguage, destinationPath)
+   * @returns {Promise<{
+   *   success: boolean,
+   *   canceled?: boolean,
+   *   format: string,
+   *   filePath: string,
+   *   filename: string,
+   *   sizeBytes: number,
+   *   segmentCount: number,
+   *   content: string
+   * }>}
+   */
+  exportSubtitles: (segments, format, options) =>
+    ipcRenderer.invoke('subtitles:export', { segments, format, options }),
+
+  /**
+   * Generate subtitle text for in-app preview without writing to disk (Phase 10)
+   * @param {Array} segments - Translated transcript segments
+   * @param {'srt'|'vtt'} [format='srt'] - Subtitle format
+   * @param {object} [options]
+   * @returns {Promise<string>}
+   */
+  generateSubtitlesPreview: (segments, format, options) =>
+    ipcRenderer.invoke('subtitles:generate-preview', { segments, format, options })
 }
 
 // Expose APIs to renderer only if context isolation is enabled

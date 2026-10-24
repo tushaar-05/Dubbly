@@ -28,7 +28,8 @@ import {
   ExternalLink,
   Edit3,
   Undo2,
-  Database
+  Database,
+  Subtitles
 } from 'lucide-react'
 import { formatDuration, formatFileSize } from '../utils/formatters'
 import apiService from '../services/api'
@@ -125,6 +126,11 @@ function VideoPreview({
   const [pipelineProgress, setPipelineProgress] = useState(null)
   const [singleClipGenerating, setSingleClipGenerating] = useState(null)
 
+  // Subtitle Export States (Phase 10)
+  const [isExportingSubtitles, setIsExportingSubtitles] = useState(null) // 'srt' | 'vtt' | null
+  const [subtitleExportResult, setSubtitleExportResult] = useState(null)
+  const [subtitleExportError, setSubtitleExportError] = useState(null)
+
   // Verification Test Result State (prevents test runs from polluting primary workflow errors)
   const [testFeedback, setTestFeedback] = useState(null)
 
@@ -147,7 +153,7 @@ function VideoPreview({
     }
   }, [targetLanguage])
 
-  // Reset playback, extraction, transcription, translation, TTS, export, and progress states when a new preview URL is loaded
+  // Reset playback, extraction, transcription, translation, TTS, export, subtitles, and progress states when a new preview URL is loaded
   useEffect(() => {
     setIsPlaying(false)
     setCurrentTime(0)
@@ -166,6 +172,9 @@ function VideoPreview({
     setExportError(null)
     setPipelineProgress(null)
     setSingleClipGenerating(null)
+    setIsExportingSubtitles(null)
+    setSubtitleExportResult(null)
+    setSubtitleExportError(null)
     setTestFeedback(null)
 
     if (extractedAudioUrl) {
@@ -619,6 +628,61 @@ function VideoPreview({
   }
 
   /**
+   * Handle Subtitle Export in SRT or WebVTT Format (Phase 10)
+   * Uses final edited translated text from Script Editor and exact segment timestamps.
+   */
+  const handleExportSubtitles = async (format) => {
+    if (!translationResult?.segments || translationResult.segments.length === 0) {
+      setSubtitleExportError(
+        'Cannot export subtitles: No translated segments available. Please translate transcript first.'
+      )
+      return
+    }
+
+    try {
+      setIsExportingSubtitles(format)
+      setSubtitleExportError(null)
+      setSubtitleExportResult(null)
+
+      const langToUse = translationResult.targetLanguage || targetLanguage || 'hi'
+      const videoName = videoFile?.name || 'video'
+
+      console.log(`[Dubbly] Exporting ${format.toUpperCase()} subtitles for ${videoName} (${langToUse})...`)
+
+      const result = await apiService.exportSubtitles(
+        translationResult.segments,
+        format,
+        {
+          videoName,
+          targetLanguage: langToUse
+        }
+      )
+
+      if (result.canceled) {
+        console.log('[Dubbly] Subtitle export canceled by user.')
+        return
+      }
+
+      console.log('[Dubbly] Subtitles exported successfully:', result)
+      setSubtitleExportResult(result)
+    } catch (err) {
+      console.error(`[Dubbly] Subtitle export error (${format}):`, err)
+      setSubtitleExportError(err.message || `Failed to export ${format.toUpperCase()} subtitles.`)
+    } finally {
+      setIsExportingSubtitles(null)
+    }
+  }
+
+  /**
+   * Reveal exported subtitle file in macOS Finder
+   */
+  const handleShowSubtitleInFolder = async () => {
+    if (subtitleExportResult?.filePath) {
+      await apiService.showInFolder(subtitleExportResult.filePath)
+    }
+  }
+
+  /**
    * Test Verification Handlers (for grading and testing)
    * Reports results to dedicated testFeedback state without polluting primary workflow error cards.
    */
@@ -810,6 +874,81 @@ function VideoPreview({
       const summary = err.message.replace(/^Error invoking remote method '[^']+': /, '')
       setTestFeedback({
         name: 'Script Edit & Cache Test',
+        success: false,
+        message: `Failed: ${summary}`
+      })
+    }
+  }
+
+  const handleTestSubtitleExport = async () => {
+    try {
+      setTestFeedback({ name: 'Subtitle Export Test', running: true, message: 'Testing subtitles...' })
+
+      // 1. Test empty segments validation
+      let emptyCaught = false
+      try {
+        await apiService.exportSubtitles([], 'srt')
+      } catch {
+        emptyCaught = true
+      }
+      if (!emptyCaught) {
+        throw new Error('Expected empty segments to fail validation, but it succeeded.')
+      }
+
+      // 2. Test subtitle generation with edited text and verify timestamp rules
+      const sampleSegments = [
+        {
+          id: 1,
+          startTime: '00:00:01,200',
+          endTime: '00:00:04,500',
+          startMs: 1200,
+          endMs: 4500,
+          durationSec: '3.30',
+          text: 'Welcome to Dubbly.',
+          translatedText: 'डबली में आपका स्वागत है। (संपादित)'
+        },
+        {
+          id: 2,
+          startTime: '00:00:05,000',
+          endTime: '00:00:08,100',
+          startMs: 5000,
+          endMs: 8100,
+          durationSec: '3.10',
+          text: 'This is the second line.',
+          translatedText: 'यह दूसरी पंक्ति है।'
+        }
+      ]
+
+      // Generate SRT preview
+      const srtText = await apiService.generateSubtitlesPreview(sampleSegments, 'srt')
+      if (!srtText.includes('00:00:01,200 --> 00:00:04,500')) {
+        throw new Error('SRT timestamp format invalid: expected comma separator (00:00:01,200).')
+      }
+      if (!srtText.includes('डबली में आपका स्वागत है। (संपादित)')) {
+        throw new Error('SRT failed to use the edited translated text.')
+      }
+
+      // Generate VTT preview
+      const vttText = await apiService.generateSubtitlesPreview(sampleSegments, 'vtt')
+      if (!vttText.startsWith('WEBVTT')) {
+        throw new Error('WebVTT must start with WEBVTT header.')
+      }
+      if (!vttText.includes('00:00:01.200 --> 00:00:04.500')) {
+        throw new Error('WebVTT timestamp format invalid: expected dot separator (00:00:01.200).')
+      }
+      if (!vttText.includes('डबली में आपका स्वागत है। (संपादित)')) {
+        throw new Error('WebVTT failed to use the edited translated text.')
+      }
+
+      setTestFeedback({
+        name: 'Subtitle Export Test',
+        success: true,
+        message: 'Verified: Correct SRT/VTT timestamps, validated empty data, and used edited text.'
+      })
+    } catch (err) {
+      const summary = err.message.replace(/^Error invoking remote method '[^']+': /, '')
+      setTestFeedback({
+        name: 'Subtitle Export Test',
         success: false,
         message: `Failed: ${summary}`
       })
@@ -1357,6 +1496,8 @@ function VideoPreview({
                 onClick={() => {
                   setTranslationResult(null)
                   setTtsResult(null)
+                  setSubtitleExportResult(null)
+                  setSubtitleExportError(null)
                 }}
                 title="Dismiss translation"
               >
@@ -1364,6 +1505,115 @@ function VideoPreview({
               </button>
             </div>
           </div>
+
+          {/* Subtitle Export Bar (Phase 10) */}
+          <div className="subtitles-export-bar">
+            <div className="subtitles-bar-info">
+              <Subtitles size={15} className="text-primary" />
+              <div className="subtitles-bar-text">
+                <span className="subtitles-bar-title">Export Subtitles:</span>
+                <span className="subtitles-bar-desc">
+                  Save timed subtitles in SRT or WebVTT format using your current script edits.
+                </span>
+              </div>
+            </div>
+
+            <div className="subtitles-btn-group">
+              <button
+                type="button"
+                className="btn-subtitles-export"
+                onClick={() => handleExportSubtitles('srt')}
+                disabled={isExportingSubtitles !== null || !translationResult?.segments?.length}
+                title="Export SubRip (.srt) subtitle file with comma timestamps"
+              >
+                {isExportingSubtitles === 'srt' ? (
+                  <>
+                    <Loader2 size={12} className="spin-icon" />
+                    <span>Exporting SRT...</span>
+                  </>
+                ) : (
+                  <>
+                    <Download size={12} />
+                    <span>Export .SRT</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                className="btn-subtitles-export"
+                onClick={() => handleExportSubtitles('vtt')}
+                disabled={isExportingSubtitles !== null || !translationResult?.segments?.length}
+                title="Export WebVTT (.vtt) subtitle file with dot timestamps and WEBVTT header"
+              >
+                {isExportingSubtitles === 'vtt' ? (
+                  <>
+                    <Loader2 size={12} className="spin-icon" />
+                    <span>Exporting VTT...</span>
+                  </>
+                ) : (
+                  <>
+                    <Download size={12} />
+                    <span>Export .VTT</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Subtitle Export Success Banner */}
+          {subtitleExportResult && (
+            <div className="subtitle-success-banner">
+              <div className="subtitle-success-info">
+                <CheckCircle2 size={15} className="text-success" />
+                <div className="subtitle-success-text">
+                  <strong>{subtitleExportResult.format} Subtitles Saved:</strong>
+                  <span title={subtitleExportResult.filePath}>
+                    {subtitleExportResult.filename} ({subtitleExportResult.segmentCount} cues,{' '}
+                    {formatFileSize(subtitleExportResult.sizeBytes)})
+                  </span>
+                </div>
+              </div>
+
+              <div className="subtitle-success-actions">
+                <button
+                  type="button"
+                  className="btn-open-subtitle-folder"
+                  onClick={handleShowSubtitleInFolder}
+                  title="Reveal subtitle file in Finder / Explorer"
+                >
+                  <FolderOpen size={12} />
+                  <span>Show in Folder</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn-dismiss-subtitle"
+                  onClick={() => setSubtitleExportResult(null)}
+                  title="Dismiss notification"
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Subtitle Export Error Banner */}
+          {subtitleExportError && (
+            <div className="subtitle-error-banner">
+              <div className="subtitle-error-info">
+                <AlertCircle size={15} className="text-danger" />
+                <span>{subtitleExportError}</span>
+              </div>
+              <button
+                type="button"
+                className="btn-dismiss-subtitle"
+                onClick={() => setSubtitleExportError(null)}
+                title="Dismiss error"
+              >
+                <X size={13} />
+              </button>
+            </div>
+          )}
 
           <div className="comparison-segments-list">
             {translationResult.segments.map((seg) => {
@@ -1834,6 +2084,16 @@ function VideoPreview({
           title="Test script editing, timestamp preservation, and deterministic cache reuse"
         >
           Test Script Edit & Cache
+        </button>
+        <span className="test-helper-dot">•</span>
+        <button
+          type="button"
+          className="btn-text-link"
+          onClick={handleTestSubtitleExport}
+          disabled={isExportingSubtitles !== null}
+          title="Test SRT/VTT subtitle generation, edited text usage, and empty validation"
+        >
+          Test Subtitle Export
         </button>
       </div>
 
