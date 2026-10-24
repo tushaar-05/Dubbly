@@ -135,7 +135,21 @@ const api = {
    * @returns {Promise<boolean>}
    */
   showInFolder: (filePath) =>
-    ipcRenderer.invoke('video:show-in-folder', { filePath })
+    ipcRenderer.invoke('video:show-in-folder', { filePath }),
+
+  /**
+   * Subscribe to asynchronous pipeline progress updates (Phase 9)
+   * @param {Function} callback - (progress: { operation, current, total, percent, message }) => void
+   * @returns {Function} Unsubscribe function
+   */
+  onProgress: (callback) => {
+    if (typeof callback !== 'function') return () => {}
+    const listener = (_, data) => callback(data)
+    ipcRenderer.on('pipeline:progress', listener)
+    return () => {
+      ipcRenderer.removeListener('pipeline:progress', listener)
+    }
+  }
 }
 
 // Expose APIs to renderer only if context isolation is enabled

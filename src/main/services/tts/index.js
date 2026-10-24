@@ -1,9 +1,34 @@
 import path from 'path'
 import fs from 'fs'
 import os from 'os'
+import crypto from 'crypto'
 import electron from 'electron'
 const app = electron && electron.app ? electron.app : electron
 import edgeTtsProvider from './providers/edgeTts.js'
+
+/**
+ * Compute deterministic cache filename based on text, language, and voice settings.
+ * If text, language, voice, rate, or volume changes, a completely different hash is produced,
+ * guaranteeing stale audio is never reused.
+ *
+ * @param {string} text
+ * @param {string} langKey
+ * @param {string} voice
+ * @param {string} [rate='+0%']
+ * @param {string} [volume='+0%']
+ * @returns {string}
+ */
+export function computeClipCacheKey(text, langKey, voice, rate = '+0%', volume = '+0%') {
+  const normText = (text || '').trim()
+  const normLang = (langKey || '').toLowerCase()
+  const normVoice = (voice || '').trim()
+  const hash = crypto
+    .createHash('sha256')
+    .update(`${normLang}::${normVoice}::${rate}::${volume}::${normText}`)
+    .digest('hex')
+    .slice(0, 20)
+  return `cached_${normLang}_${hash}.mp3`
+}
 
 /**
  * Supported Indian Languages & Default Neural Voices
@@ -214,10 +239,12 @@ class TtsService {
     await fs.promises.mkdir(outputDir, { recursive: true })
 
     const generatedClips = []
-    let successCount = 0
+    let newlySynthesizedCount = 0
+    let cachedCount = 0
 
-    // 5. Synthesize each segment separately
-    for (const seg of segments) {
+    // 5. Synthesize or reuse cached audio for each segment
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i]
       const segId = seg.id !== undefined ? seg.id : generatedClips.length
       const originalText = seg.originalText || seg.text || ''
       const translatedText = (seg.translatedText || '').trim()
@@ -237,24 +264,75 @@ class TtsService {
           audioFilename: null,
           sizeBytes: 0,
           voice,
-          hasAudio: false
+          hasAudio: false,
+          fromCache: false
         })
         continue
       }
 
-      // Output filename: clip_<id>_<lang>_<timestamp>.mp3
-      const timestamp = Date.now()
-      const clipFilename = `clip_${segId}_${langKey}_${timestamp}.mp3`
+      // Compute deterministic cache key for text + lang + voice + rate + volume
+      const clipFilename = computeClipCacheKey(
+        translatedText,
+        langKey,
+        voice,
+        options.rate,
+        options.volume
+      )
       const clipPath = path.join(outputDir, clipFilename)
 
       try {
-        const result = await this.activeProvider.synthesize({
-          text: translatedText,
-          voice,
-          outputPath: clipPath,
-          rate: options.rate || '+0%',
-          volume: options.volume || '+0%'
-        })
+        let sizeBytes = 0
+        let isFromCache = false
+
+        // Check if cached audio file already exists on disk with non-zero size
+        if (fs.existsSync(clipPath)) {
+          const stats = await fs.promises.stat(clipPath)
+          if (stats.size > 0) {
+            sizeBytes = stats.size
+            isFromCache = true
+            cachedCount++
+          }
+        }
+
+        // Cache miss: synthesize fresh audio clip via active provider
+        if (!isFromCache) {
+          if (typeof options.onProgress === 'function') {
+            options.onProgress({
+              operation: 'tts',
+              current: i + 1,
+              total: segments.length,
+              percent: Math.round(((i + 1) / segments.length) * 100),
+              message: `Synthesizing clip ${i + 1} of ${segments.length} (${voice.split('-')[2] || voice})...`,
+              cached: false
+            })
+          }
+
+          const result = await this.activeProvider.synthesize({
+            text: translatedText,
+            voice,
+            outputPath: clipPath,
+            rate: options.rate || '+0%',
+            volume: options.volume || '+0%'
+          })
+
+          sizeBytes = result.sizeBytes
+          newlySynthesizedCount++
+
+          // Gentle delay between remote synthesis requests
+          await new Promise((resolve) => setTimeout(resolve, 50))
+        } else {
+          // Cache hit: immediately report cache reuse
+          if (typeof options.onProgress === 'function') {
+            options.onProgress({
+              operation: 'tts',
+              current: i + 1,
+              total: segments.length,
+              percent: Math.round(((i + 1) / segments.length) * 100),
+              message: `Reused clip ${i + 1} of ${segments.length} from cache`,
+              cached: true
+            })
+          }
+        }
 
         generatedClips.push({
           id: segId,
@@ -265,16 +343,13 @@ class TtsService {
           durationSec: seg.durationSec,
           originalText,
           translatedText,
-          audioPath: result.outputPath,
+          audioPath: clipPath,
           audioFilename: clipFilename,
-          sizeBytes: result.sizeBytes,
+          sizeBytes,
           voice,
-          hasAudio: true
+          hasAudio: true,
+          fromCache: isFromCache
         })
-        successCount++
-
-        // Small interval between segments to avoid network congestion
-        await new Promise((resolve) => setTimeout(resolve, 50))
       } catch (err) {
         throw new Error(`Failed to synthesize segment #${segId} ("${translatedText}"): ${err.message}`)
       }
@@ -286,7 +361,9 @@ class TtsService {
       targetLanguage: langKey,
       voice,
       totalSegments: segments.length,
-      generatedCount: successCount,
+      generatedCount: newlySynthesizedCount + cachedCount,
+      newlySynthesizedCount,
+      cachedCount,
       outputDirectory: outputDir,
       clips: generatedClips
     }

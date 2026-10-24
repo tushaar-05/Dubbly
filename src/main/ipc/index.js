@@ -132,14 +132,17 @@ export function registerIpcHandlers() {
       throw new Error(`Audio file does not exist: "${audioPath}"`)
     }
 
-    return await transcriptionService.transcribeAudio(resolvedAudioPath, { modelPath })
+    return await transcriptionService.transcribeAudio(resolvedAudioPath, {
+      modelPath,
+      onProgress: (p) => event.sender.send('pipeline:progress', p)
+    })
   })
 
   /**
    * Transcript Translation Channel (Phase 6)
    * Channel: 'translation:translate-transcript'
    */
-  ipcMain.handle('translation:translate-transcript', async (_, { segments, targetLanguage } = {}) => {
+  ipcMain.handle('translation:translate-transcript', async (event, { segments, targetLanguage } = {}) => {
     // 1. Validate segments argument
     if (!segments || !Array.isArray(segments)) {
       throw new Error('Invalid request: segments must be an array of transcript items.')
@@ -156,7 +159,9 @@ export function registerIpcHandlers() {
       throw new Error('Target language code must be provided.')
     }
 
-    return await translationService.translateTranscript(segments, targetLanguage)
+    return await translationService.translateTranscript(segments, targetLanguage, {
+      onProgress: (p) => event.sender.send('pipeline:progress', p)
+    })
   })
 
   /**
@@ -168,14 +173,14 @@ export function registerIpcHandlers() {
   })
 
   /**
-   * TTS Speech Generation Channel (Phase 7)
+   * TTS Speech Generation Channel (Phase 7 & Phase 9)
    * Channel: 'tts:generate-speech'
    *
    * SECURITY & VALIDATION:
    * Validates segment array and target language.
-   * Generates separate audio clips per segment into Dubbly's designated temporary directory.
+   * Generates or reuses cached audio clips per segment inside Dubbly's designated temporary directory.
    */
-  ipcMain.handle('tts:generate-speech', async (_, { segments, targetLanguage, voice } = {}) => {
+  ipcMain.handle('tts:generate-speech', async (event, { segments, targetLanguage, voice } = {}) => {
     if (!segments || !Array.isArray(segments)) {
       throw new Error('Invalid request: segments must be an array of transcript segments.')
     }
@@ -188,7 +193,10 @@ export function registerIpcHandlers() {
       throw new Error('Target language code must be provided.')
     }
 
-    return await ttsService.synthesizeSegments(segments, targetLanguage, { voice })
+    return await ttsService.synthesizeSegments(segments, targetLanguage, {
+      voice,
+      onProgress: (p) => event.sender.send('pipeline:progress', p)
+    })
   })
 
   /**
@@ -227,7 +235,7 @@ export function registerIpcHandlers() {
   })
 
   /**
-   * Video Dubbing & Export Channel (Phase 8)
+   * Video Dubbing & Export Channel (Phase 8 & Phase 9)
    * Channel: 'video:export-dubbed'
    *
    * SECURITY & VALIDATION:
@@ -235,7 +243,7 @@ export function registerIpcHandlers() {
    * Creates synchronized master audio track with timing adjustments,
    * then combines with original video using lossless stream copy.
    */
-  ipcMain.handle('video:export-dubbed', async (_, { videoPath, clips, targetLanguage, options } = {}) => {
+  ipcMain.handle('video:export-dubbed', async (event, { videoPath, clips, targetLanguage, options } = {}) => {
     if (!videoPath || typeof videoPath !== 'string') {
       throw new Error('Invalid video path provided for export.')
     }
@@ -251,9 +259,19 @@ export function registerIpcHandlers() {
     }
 
     // 1. Probe total video duration
+    event.sender.send('pipeline:progress', {
+      operation: 'export',
+      percent: 15,
+      message: 'Probing video duration and timeline...'
+    })
     const totalDuration = await timingService.probeDuration(videoPath)
 
     // 2. Create synchronized master audio track
+    event.sender.send('pipeline:progress', {
+      operation: 'export',
+      percent: 45,
+      message: 'Assembling synchronized master audio track and adjusting speech timing...'
+    })
     const masterAudioResult = await timingService.createSynchronizedAudioTrack(
       validClips,
       totalDuration,
@@ -261,11 +279,22 @@ export function registerIpcHandlers() {
     )
 
     // 3. Combine original video with synchronized dubbed audio
+    event.sender.send('pipeline:progress', {
+      operation: 'export',
+      percent: 80,
+      message: 'Muxing video with synchronized dubbed audio via lossless stream copy...'
+    })
     const exportResult = await videoService.combineVideoAndAudio(
       videoPath,
       masterAudioResult.masterAudioPath,
       { language: targetLanguage, ...options }
     )
+
+    event.sender.send('pipeline:progress', {
+      operation: 'export',
+      percent: 100,
+      message: 'Dubbed video export complete!'
+    })
 
     return {
       ...exportResult,

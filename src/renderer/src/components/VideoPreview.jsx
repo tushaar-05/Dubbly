@@ -25,7 +25,10 @@ import {
   Download,
   Film,
   FolderOpen,
-  ExternalLink
+  ExternalLink,
+  Edit3,
+  Undo2,
+  Database
 } from 'lucide-react'
 import { formatDuration, formatFileSize } from '../utils/formatters'
 import apiService from '../services/api'
@@ -118,8 +121,22 @@ function VideoPreview({
   const [exportedVideoBlobUrl, setExportedVideoBlobUrl] = useState(null)
   const [exportError, setExportError] = useState(null)
 
+  // Script Editor & Progress States (Phase 9)
+  const [pipelineProgress, setPipelineProgress] = useState(null)
+  const [singleClipGenerating, setSingleClipGenerating] = useState(null)
+
   // Verification Test Result State (prevents test runs from polluting primary workflow errors)
   const [testFeedback, setTestFeedback] = useState(null)
+
+  // Subscribe to real-time pipeline progress updates across all long-running stages (Phase 9)
+  useEffect(() => {
+    const unsubscribe = apiService.onProgress((data) => {
+      setPipelineProgress(data)
+    })
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe()
+    }
+  }, [])
 
   // Update selected voice whenever target language changes
   useEffect(() => {
@@ -130,7 +147,7 @@ function VideoPreview({
     }
   }, [targetLanguage])
 
-  // Reset playback, extraction, transcription, translation, TTS, and export states when a new preview URL is loaded
+  // Reset playback, extraction, transcription, translation, TTS, export, and progress states when a new preview URL is loaded
   useEffect(() => {
     setIsPlaying(false)
     setCurrentTime(0)
@@ -147,6 +164,8 @@ function VideoPreview({
     setIsExporting(false)
     setExportResult(null)
     setExportError(null)
+    setPipelineProgress(null)
+    setSingleClipGenerating(null)
     setTestFeedback(null)
 
     if (extractedAudioUrl) {
@@ -411,6 +430,125 @@ function VideoPreview({
   }
 
   /**
+   * Handle Script Text Change in Script Editor (Phase 9)
+   * Strictly preserves segment ID, startTime, endTime, startMs, endMs, and durationSec.
+   */
+  const handleSegmentTextChange = (segmentId, newText) => {
+    setTranslationResult((prev) => {
+      if (!prev) return prev
+      const updatedSegments = prev.segments.map((seg) => {
+        if (seg.id === segmentId) {
+          const originalTranslated =
+            seg.originalTranslatedText !== undefined
+              ? seg.originalTranslatedText
+              : seg.translatedText || ''
+          return {
+            ...seg,
+            translatedText: newText,
+            originalTranslatedText: originalTranslated,
+            isEdited: newText.trim() !== originalTranslated.trim()
+          }
+        }
+        return seg
+      })
+
+      return {
+        ...prev,
+        segments: updatedSegments
+      }
+    })
+  }
+
+  /**
+   * Reset Edited Segment Text to Original Machine Translation (Phase 9)
+   */
+  const handleResetSegmentText = (segmentId) => {
+    setTranslationResult((prev) => {
+      if (!prev) return prev
+      const updatedSegments = prev.segments.map((seg) => {
+        if (seg.id === segmentId && seg.originalTranslatedText !== undefined) {
+          return {
+            ...seg,
+            translatedText: seg.originalTranslatedText,
+            isEdited: false
+          }
+        }
+        return seg
+      })
+
+      return {
+        ...prev,
+        segments: updatedSegments
+      }
+    })
+  }
+
+  /**
+   * Synthesize or Regenerate Voice Clip for a Single Segment (Phase 9)
+   * Reuses cache if unchanged or synthesizes fresh clip if text/voice changed.
+   */
+  const handleGenerateSingleClip = async (segment) => {
+    if (!segment || !segment.translatedText?.trim()) return
+
+    const currentVoiceOptions =
+      INDIAN_VOICE_CONFIG[translationResult?.targetLanguage || targetLanguage] || []
+    const voiceToUse = selectedVoice || currentVoiceOptions[0]?.id || 'hi-IN-MadhurNeural'
+    const langToUse = translationResult?.targetLanguage || targetLanguage || 'hi'
+
+    try {
+      setSingleClipGenerating(segment.id)
+      setTtsError(null)
+
+      console.log(`[Dubbly] Synthesizing single clip #${segment.id} for "${segment.translatedText}"...`)
+      const result = await apiService.generateSpeech([segment], langToUse, voiceToUse)
+
+      if (result.clips && result.clips.length > 0) {
+        const newClip = result.clips[0]
+
+        // Update clip in ttsResult
+        setTtsResult((prev) => {
+          if (!prev) {
+            return {
+              ...result,
+              totalSegments: translationResult?.segments?.length || 1,
+              clips: [newClip]
+            }
+          }
+          const existingIndex = prev.clips ? prev.clips.findIndex((c) => c.id === segment.id) : -1
+          let nextClips
+          if (existingIndex >= 0) {
+            nextClips = [...prev.clips]
+            nextClips[existingIndex] = newClip
+          } else {
+            nextClips = [...(prev.clips || []), newClip]
+          }
+          return {
+            ...prev,
+            clips: nextClips,
+            generatedCount: nextClips.filter((c) => c.hasAudio).length,
+            cachedCount: (prev.cachedCount || 0) + (newClip.fromCache ? 1 : 0)
+          }
+        })
+
+        // Fetch in-memory blob URL for immediate playback
+        if (newClip.hasAudio && newClip.audioPath) {
+          try {
+            const blobUrl = await apiService.getTtsAudioBlobUrl(newClip.audioPath)
+            setTtsClipBlobs((prevBlobs) => ({ ...prevBlobs, [segment.id]: blobUrl }))
+          } catch (blobErr) {
+            console.warn(`Could not load audio blob for clip #${segment.id}:`, blobErr)
+          }
+        }
+      }
+    } catch (err) {
+      console.error(`Failed to generate clip for segment #${segment.id}:`, err)
+      setTtsError(err.message || `Failed to generate voice for segment #${segment.id}`)
+    } finally {
+      setSingleClipGenerating(null)
+    }
+  }
+
+  /**
    * Handle Video Dubbing & Export (Phase 8)
    */
   const handleExportDubbedVideo = async () => {
@@ -609,6 +747,71 @@ function VideoPreview({
         name: 'Export Error Test',
         success: true,
         message: `Verified: Safely rejected invalid video/clips ("${summary}")`
+      })
+    }
+  }
+
+  const handleTestScriptEditAndCache = async () => {
+    try {
+      setTestFeedback({ name: 'Script Edit & Cache Test', running: true, message: 'Testing cache & timestamps...' })
+
+      // 1. Define sample segment with exact timestamps
+      const originalSeg = {
+        id: 99,
+        startTime: '00:00:01,000',
+        endTime: '00:00:04,000',
+        startMs: 1000,
+        endMs: 4000,
+        durationSec: '3.00',
+        text: 'Hello world',
+        translatedText: 'नमस्ते दुनिया'
+      }
+
+      // 2. Synthesize initial speech clip
+      const res1 = await apiService.generateSpeech([originalSeg], 'hi', 'hi-IN-MadhurNeural')
+      const clip1 = res1.clips[0]
+
+      // Verify timestamps remain unchanged
+      if (
+        clip1.id !== originalSeg.id ||
+        clip1.startTime !== originalSeg.startTime ||
+        clip1.endTime !== originalSeg.endTime
+      ) {
+        throw new Error('Segment timestamps or ID were corrupted during speech synthesis.')
+      }
+
+      // 3. Synthesize identical clip again -> MUST reuse cache!
+      const res2 = await apiService.generateSpeech([originalSeg], 'hi', 'hi-IN-MadhurNeural')
+      const clip2 = res2.clips[0]
+      if (!clip2.fromCache) {
+        throw new Error('Cache miss: Identical speech clip was not reused from cache.')
+      }
+
+      // 4. Modify translated text (Simulate Script Editor edit)
+      const editedSeg = {
+        ...originalSeg,
+        translatedText: 'नमस्ते और स्वागत है दोस्तों'
+      }
+
+      const res3 = await apiService.generateSpeech([editedSeg], 'hi', 'hi-IN-MadhurNeural')
+      const clip3 = res3.clips[0]
+
+      // Confirm stale audio was NOT reused
+      if (clip3.audioFilename === clip2.audioFilename) {
+        throw new Error('Stale audio reuse: Modified text reused previous audio filename.')
+      }
+
+      setTestFeedback({
+        name: 'Script Edit & Cache Test',
+        success: true,
+        message: 'Verified: Preserved timestamps, reused cache on identical inputs, and generated fresh audio on text edit.'
+      })
+    } catch (err) {
+      const summary = err.message.replace(/^Error invoking remote method '[^']+': /, '')
+      setTestFeedback({
+        name: 'Script Edit & Cache Test',
+        success: false,
+        message: `Failed: ${summary}`
       })
     }
   }
@@ -897,7 +1100,18 @@ function VideoPreview({
           <Loader2 size={18} className="spin-icon text-primary" />
           <div className="extraction-status-text">
             <strong>Transcribing Speech with whisper.cpp...</strong>
-            <span>Detecting speech segments and calculating precise timestamps via Metal GPU.</span>
+            <span>
+              {pipelineProgress?.message ||
+                'Detecting speech segments and calculating precise timestamps via Metal GPU.'}
+            </span>
+            {pipelineProgress && pipelineProgress.percent !== undefined && (
+              <div className="pipeline-progress-track">
+                <div
+                  className="pipeline-progress-fill"
+                  style={{ width: `${pipelineProgress.percent}%` }}
+                />
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1048,25 +1262,42 @@ function VideoPreview({
           <Loader2 size={18} className="spin-icon text-primary" />
           <div className="extraction-status-text">
             <strong>Translating Speech Transcript...</strong>
-            <span>Translating segments to {currentLangObj.name} ({currentLangObj.native}) via Google Translate.</span>
+            <span>
+              {pipelineProgress?.message ||
+                `Translating segments to ${currentLangObj.name} (${currentLangObj.native}) via Google Translate.`}
+            </span>
+            {pipelineProgress && pipelineProgress.percent !== undefined && (
+              <div className="pipeline-progress-track">
+                <div
+                  className="pipeline-progress-fill"
+                  style={{ width: `${pipelineProgress.percent}%` }}
+                />
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* Translation Result Card (Phase 6): Side-by-Side Comparison */}
+      {/* Translation Result Card (Phase 6 & Phase 9): Script Editor & Comparison */}
       {translationResult && (
         <div className="translation-container-card">
           <div className="translation-header-row">
             <div className="translation-title-group">
               <Languages size={18} className="text-primary" />
               <strong className="translation-title">
-                Multilingual Translation ({translationResult.targetLanguageName})
+                Script Editor & Translation ({translationResult.targetLanguageName})
               </strong>
               <span className="badge-lang-native">{translationResult.targetLanguageNative}</span>
               <span className="badge-count">{translationResult.segmentCount} segments</span>
+              {translationResult.segments?.some((s) => s.isEdited) && (
+                <span className="badge-script-edited-count">
+                  {translationResult.segments.filter((s) => s.isEdited).length} edited
+                </span>
+              )}
               {ttsResult && (
                 <span className="badge-tts-success">
                   {ttsResult.generatedCount} voice clips ready
+                  {ttsResult.cachedCount > 0 && ` (${ttsResult.cachedCount} cached)`}
                 </span>
               )}
             </div>
@@ -1103,7 +1334,7 @@ function VideoPreview({
                   title={
                     !translationResult?.segments || translationResult.segments.length === 0
                       ? 'No translated segments available to synthesize'
-                      : 'Generate voiceover audio clips for each segment via Edge TTS'
+                      : 'Generate or reuse voiceover audio clips for all segments via Edge TTS'
                   }
                 >
                   {isGeneratingTts ? (
@@ -1138,6 +1369,11 @@ function VideoPreview({
             {translationResult.segments.map((seg) => {
               const clip = ttsResult?.clips?.find((c) => c.id === seg.id)
               const blobUrl = ttsClipBlobs[seg.id]
+              const isClipOutOfSync =
+                clip &&
+                clip.hasAudio &&
+                clip.translatedText &&
+                seg.translatedText.trim() !== clip.translatedText.trim()
 
               return (
                 <div key={seg.id} className="comparison-segment-card">
@@ -1156,39 +1392,92 @@ function VideoPreview({
                       <p className="segment-text">{seg.originalText || '(Silence)'}</p>
                     </div>
 
-                    {/* Indian Language Translated */}
-                    <div className="comparison-col translated">
-                      <span className="lang-label highlight">
-                        {translationResult.targetLanguageName} ({translationResult.targetLanguageNative})
-                      </span>
-                      <p className="segment-text translated-content">
-                        {seg.translatedText || '(Silence)'}
-                      </p>
+                    {/* Indian Language Translated (Script Editor - Phase 9) */}
+                    <div className="comparison-col translated script-editor-col">
+                      <div className="script-col-header">
+                        <div className="script-lang-info">
+                          <span className="lang-label highlight">
+                            {translationResult.targetLanguageName} ({translationResult.targetLanguageNative})
+                          </span>
+                          {seg.isEdited && (
+                            <span className="badge-script-edited" title="Text modified in Script Editor">
+                              <Edit3 size={10} />
+                              <span>Edited</span>
+                            </span>
+                          )}
+                        </div>
+
+                        {seg.isEdited && (
+                          <button
+                            type="button"
+                            className="btn-script-reset"
+                            onClick={() => handleResetSegmentText(seg.id)}
+                            title="Reset to original machine translation"
+                          >
+                            <Undo2 size={11} />
+                            <span>Reset</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Script Editor Editable Textarea */}
+                      <textarea
+                        className="script-editor-textarea"
+                        value={seg.translatedText || ''}
+                        onChange={(e) => handleSegmentTextChange(seg.id, e.target.value)}
+                        placeholder="Type or edit translated script for this segment..."
+                        rows={2}
+                      />
                     </div>
                   </div>
 
-                  {/* Generated TTS Voiceover Audio Clip (Phase 7) */}
-                  {clip && clip.hasAudio && (
-                    <div className="segment-voiceover-row">
-                      <div className="voiceover-meta">
-                        <Headphones size={13} className="text-primary" />
-                        <span className="voiceover-label">Voiceover Clip:</span>
-                        <span className="voiceover-voice-tag">
-                          {clip.voice.split('-')[2] || clip.voice}
-                        </span>
-                        <span className="voiceover-size-tag">
-                          {formatFileSize(clip.sizeBytes)}
-                        </span>
-                      </div>
+                  {/* Generated TTS Voiceover Audio Clip (Phase 7 & Phase 9) */}
+                  <div className="segment-voiceover-row">
+                    <div className="voiceover-meta">
+                      <Headphones size={13} className="text-primary" />
+                      <span className="voiceover-label">Voiceover Clip:</span>
+                      {clip && clip.hasAudio ? (
+                        <>
+                          <span className="voiceover-voice-tag">
+                            {clip.voice.split('-')[2] || clip.voice}
+                          </span>
+                          <span className="voiceover-size-tag">
+                            {formatFileSize(clip.sizeBytes)}
+                          </span>
+                          {clip.fromCache && (
+                            <span
+                              className="voiceover-cache-badge"
+                              title="Reused from deterministic local cache"
+                            >
+                              <Database size={10} />
+                              <span>Cached</span>
+                            </span>
+                          )}
+                          {isClipOutOfSync && (
+                            <span
+                              className="badge-clip-outdated"
+                              title="Script text was modified after voiceover was generated"
+                            >
+                              Text Edited
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="voiceover-empty-tag">Not generated yet</span>
+                      )}
+                    </div>
 
-                      {blobUrl ? (
+                    <div className="voiceover-actions-group">
+                      {clip && clip.hasAudio && blobUrl && (
                         <audio
                           controls
                           src={blobUrl}
                           className="segment-audio-player"
                           preload="metadata"
                         />
-                      ) : (
+                      )}
+
+                      {clip && clip.hasAudio && !blobUrl && (
                         <button
                           type="button"
                           className="btn-play-clip-load"
@@ -1205,8 +1494,38 @@ function VideoPreview({
                           <span>Load Audio</span>
                         </button>
                       )}
+
+                      {/* Per-Segment Generate / Regenerate Clip Button (Phase 9) */}
+                      <button
+                        type="button"
+                        className="btn-single-tts"
+                        onClick={() => handleGenerateSingleClip(seg)}
+                        disabled={singleClipGenerating === seg.id || !seg.translatedText?.trim()}
+                        title={
+                          clip && clip.hasAudio
+                            ? 'Regenerate this voice clip with the current script text'
+                            : 'Generate voice clip for this segment'
+                        }
+                      >
+                        {singleClipGenerating === seg.id ? (
+                          <>
+                            <Loader2 size={12} className="spin-icon" />
+                            <span>Generating...</span>
+                          </>
+                        ) : clip && clip.hasAudio ? (
+                          <>
+                            <RefreshCw size={12} />
+                            <span>Regenerate Clip</span>
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles size={12} />
+                            <span>Generate Clip</span>
+                          </>
+                        )}
+                      </button>
                     </div>
-                  )}
+                  </div>
                 </div>
               )
             })}
@@ -1221,8 +1540,17 @@ function VideoPreview({
           <div className="extraction-status-text">
             <strong>Synthesizing Voiceover with Edge TTS...</strong>
             <span>
-              Generating high-quality Indian neural voice clips for {translationResult?.targetLanguageName} segments.
+              {pipelineProgress?.message ||
+                `Generating high-quality Indian neural voice clips for ${translationResult?.targetLanguageName} segments.`}
             </span>
+            {pipelineProgress && pipelineProgress.percent !== undefined && (
+              <div className="pipeline-progress-track">
+                <div
+                  className="pipeline-progress-fill"
+                  style={{ width: `${pipelineProgress.percent}%` }}
+                />
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1319,8 +1647,17 @@ function VideoPreview({
           <div className="extraction-status-text">
             <strong>Synchronizing Audio & Exporting Dubbed Video with FFmpeg...</strong>
             <span>
-              Aligning voice clips to timestamps, pacing segments, and muxing audio with original video using lossless stream copy.
+              {pipelineProgress?.message ||
+                'Aligning voice clips to timestamps, pacing segments, and muxing audio with original video using lossless stream copy.'}
             </span>
+            {pipelineProgress && pipelineProgress.percent !== undefined && (
+              <div className="pipeline-progress-track">
+                <div
+                  className="pipeline-progress-fill"
+                  style={{ width: `${pipelineProgress.percent}%` }}
+                />
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1487,6 +1824,16 @@ function VideoPreview({
           title="Test video export failure handling"
         >
           Test Export Error
+        </button>
+        <span className="test-helper-dot">•</span>
+        <button
+          type="button"
+          className="btn-text-link"
+          onClick={handleTestScriptEditAndCache}
+          disabled={isGeneratingTts || isExporting}
+          title="Test script editing, timestamp preservation, and deterministic cache reuse"
+        >
+          Test Script Edit & Cache
         </button>
       </div>
 

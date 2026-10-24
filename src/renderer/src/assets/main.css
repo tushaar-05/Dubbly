@@ -1790,4 +1790,188 @@ input:checked + .slider-pill:before {
   object-fit: contain;
 }
 
+/* ==========================================================================
+   Phase 9: Script Editor, Real-Time Progress & Caching Styles
+   ========================================================================== */
+
+/* Progress Bar inside Loading Cards */
+.pipeline-progress-track {
+  width: 100%;
+  height: 6px;
+  background-color: #e2e8f0;
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.pipeline-progress-fill {
+  height: 100%;
+  background-color: var(--color-primary);
+  border-radius: var(--radius-full);
+  transition: width 0.25s ease-out;
+}
+
+/* Script Editor Column */
+.script-editor-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background-color: #f8fafc;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid #e2e8f0;
+  transition: border-color 0.15s ease;
+}
+
+.script-editor-col:focus-within {
+  border-color: #93c5fd;
+  background-color: #ffffff;
+}
+
+.script-col-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.script-lang-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.badge-script-edited {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #b45309;
+  background-color: #fef3c7;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.badge-script-edited-count {
+  font-size: 11px;
+  font-weight: 600;
+  color: #b45309;
+  background-color: #fef3c7;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  border: 1px solid #fde68a;
+}
+
+.btn-script-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.btn-script-reset:hover {
+  color: var(--text-primary);
+  background-color: #e2e8f0;
+}
+
+/* Editable Script Textarea */
+.script-editor-textarea {
+  width: 100%;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #14532d;
+  background-color: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  resize: vertical;
+  min-height: 48px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.script-editor-textarea:focus {
+  border-color: #0284c7;
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15);
+}
+
+.script-editor-textarea::placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Voiceover Row Action Group & Cache Badges */
+.voiceover-actions-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.voiceover-cache-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #059669;
+  background-color: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.badge-clip-outdated {
+  font-size: 10px;
+  font-weight: 600;
+  color: #c2410c;
+  background-color: #ffedd5;
+  border: 1px solid #fed7aa;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.voiceover-empty-tag {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.btn-single-tts {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-card);
+  background-color: var(--bg-surface);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn-single-tts:hover:not(:disabled) {
+  background-color: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+.btn-single-tts:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+
 

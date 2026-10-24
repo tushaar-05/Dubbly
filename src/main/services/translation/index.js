@@ -135,7 +135,7 @@ export const translationService = {
    *   }>
    * }>}
    */
-  async translateTranscript(segments, targetLang) {
+  async translateTranscript(segments, targetLang, options = {}) {
     // 1. Validate segments input
     if (!segments || !Array.isArray(segments) || segments.length === 0) {
       throw new Error(
@@ -156,8 +156,19 @@ export const translationService = {
     const translatedSegments = []
 
     // 3. Translate each segment preserving original IDs and timing
-    for (const seg of segments) {
-      const origText = seg.text ? seg.text.trim() : ''
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i]
+      const origText = (seg.text || seg.originalText || '').trim()
+
+      if (typeof options.onProgress === 'function') {
+        options.onProgress({
+          operation: 'translation',
+          current: i + 1,
+          total: segments.length,
+          percent: Math.round(((i + 1) / segments.length) * 100),
+          message: `Translating segment ${i + 1} of ${segments.length} to ${langObj.name}...`
+        })
+      }
 
       let translated = ''
       if (origText.length > 0) {
@@ -174,7 +185,9 @@ export const translationService = {
         endMs: seg.endMs,
         durationSec: seg.durationSec,
         originalText: origText,
-        translatedText: translated
+        translatedText: translated,
+        originalTranslatedText: translated,
+        isEdited: false
       })
     }
 

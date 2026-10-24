@@ -288,6 +288,18 @@ export const apiService = {
       return await window.api.showInFolder(filePath)
     }
     return false
+  },
+
+  /**
+   * Listen for pipeline progress updates from the main process (Phase 9)
+   * @param {Function} callback
+   * @returns {Function} Unsubscribe cleanup function
+   */
+  onProgress(callback) {
+    if (window.api && typeof window.api.onProgress === 'function') {
+      return window.api.onProgress(callback)
+    }
+    return () => {}
   }
 }
 

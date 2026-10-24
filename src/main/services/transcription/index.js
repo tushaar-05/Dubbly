@@ -189,10 +189,26 @@ export const transcriptionService = {
       '-np'
     ]
 
+    if (typeof options.onProgress === 'function') {
+      options.onProgress({
+        operation: 'transcription',
+        percent: 25,
+        message: 'Initializing whisper.cpp and loading speech model...'
+      })
+    }
+
     return new Promise((resolve, reject) => {
       let stderrOutput = ''
 
       const whisperProc = spawn(whisperBin, args)
+
+      if (typeof options.onProgress === 'function') {
+        options.onProgress({
+          operation: 'transcription',
+          percent: 50,
+          message: 'Transcribing speech audio and detecting timestamps...'
+        })
+      }
 
       whisperProc.stderr.on('data', (d) => {
         stderrOutput += d.toString()
@@ -213,6 +229,14 @@ export const transcriptionService = {
       whisperProc.on('close', async (code) => {
         if (code === 0) {
           try {
+            if (typeof options.onProgress === 'function') {
+              options.onProgress({
+                operation: 'transcription',
+                percent: 90,
+                message: 'Formatting timestamps and speech segments...'
+              })
+            }
+
             if (!fs.existsSync(expectedJsonFile)) {
               return reject(new Error('whisper.cpp completed but no transcript JSON file was generated.'))
             }
