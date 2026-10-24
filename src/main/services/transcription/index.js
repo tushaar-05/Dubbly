@@ -61,12 +61,29 @@ export async function findWhisperBinary() {
     }
   }
 
-  return 'whisper-cli'
+  // 4. Test if 'whisper-cli' or 'whisper-cpp' is directly callable
+  for (const cmd of ['whisper-cli', 'whisper-cpp']) {
+    try {
+      const testProc = spawn(cmd, ['--help'])
+      const isWorking = await new Promise((resolve) => {
+        testProc.on('close', () => resolve(true))
+        testProc.on('error', () => resolve(false))
+      })
+      if (isWorking) return cmd
+    } catch {
+      // Ignore
+    }
+  }
+
+  throw new Error(
+    'whisper.cpp executable (whisper-cli) was not found on your system. Fix: Install via Homebrew with "brew install whisper-cpp", download prebuilt binaries from github.com/ggerganov/whisper.cpp/releases, or place whisper-cli in your PATH or ./bin/.'
+  )
 }
 
 /**
  * Locate a GGML Whisper model file.
  * Prioritizes lightweight models (ggml-tiny.en.bin, ggml-base.en.bin).
+ * Checks project directory, app resources (production packaged), and app userData.
  *
  * @param {string} [customModelPath] - Optional override model path
  * @returns {string|null} Path to model file or null if not found
@@ -80,10 +97,12 @@ export function findModelPath(customModelPath) {
     return process.env.WHISPER_MODEL_PATH
   }
 
-  // Common candidate locations in project and app directories
+  // Common candidate locations in project, packaged resources, and userData
   const userDataModels = app?.getPath ? path.join(app.getPath('userData'), 'models') : null
+  const resourcesModels = process.resourcesPath ? path.join(process.resourcesPath, 'models') : null
   const candidateDirs = [
     path.join(process.cwd(), 'models'),
+    ...(resourcesModels ? [resourcesModels] : []),
     ...(userDataModels ? [userDataModels] : [])
   ]
 
@@ -157,11 +176,7 @@ export const transcriptionService = {
     const modelPath = findModelPath(options.modelPath)
     if (!modelPath) {
       throw new Error(
-        `Whisper speech model not found. Expected model file at "${path.join(
-          process.cwd(),
-          'models',
-          'ggml-tiny.en.bin'
-        )}". Please ensure the model file is downloaded.`
+        'Whisper speech model not found. Fix: Download ggml-tiny.en.bin or ggml-base.en.bin into the models/ directory: "curl -L -o models/ggml-tiny.en.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin", or set the WHISPER_MODEL_PATH environment variable.'
       )
     }
 

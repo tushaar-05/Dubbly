@@ -1127,6 +1127,41 @@ function VideoPreview({
     }
   }
 
+  const handleTestDiagnostics = async () => {
+    try {
+      setTestFeedback({
+        name: 'System Diagnostics Test',
+        running: true,
+        message: 'Scanning environment prerequisites and tools...'
+      })
+
+      const diag = await apiService.checkEnvironment()
+      if (!diag || !diag.tools) {
+        throw new Error('Invalid diagnostic output returned from main process.')
+      }
+
+      const toolNames = Object.keys(diag.tools)
+      const requiredTools = ['ffmpeg', 'ffprobe', 'whisper', 'whisperModel', 'edgeTts', 'internet']
+      const missingRequiredKeys = requiredTools.filter((k) => !toolNames.includes(k))
+      if (missingRequiredKeys.length > 0) {
+        throw new Error(`Diagnostics missing tool checks for: ${missingRequiredKeys.join(', ')}`)
+      }
+
+      setTestFeedback({
+        name: 'System Diagnostics Test',
+        success: true,
+        message: `Verified: ${diag.readyCount}/${diag.totalCount} tools detected. Summary: ${diag.summary}`
+      })
+    } catch (err) {
+      const summary = err.message.replace(/^Error invoking remote method '[^']+': /, '')
+      setTestFeedback({
+        name: 'System Diagnostics Test',
+        success: false,
+        message: `Failed: ${summary}`
+      })
+    }
+  }
+
   const currentLangObj =
     INDIAN_LANGUAGES.find((l) => l.code === targetLanguage) || INDIAN_LANGUAGES[0]
   const currentVoiceOptions = INDIAN_VOICE_CONFIG[targetLanguage] || []
@@ -2472,6 +2507,15 @@ function VideoPreview({
           title="Test OCR text detection, translation, and spoken transcript isolation"
         >
           Test OCR & Separation
+        </button>
+        <span className="test-helper-dot">•</span>
+        <button
+          type="button"
+          className="btn-text-link"
+          onClick={handleTestDiagnostics}
+          title="Verify environment diagnostics service, external tool discovery, and prerequisites"
+        >
+          Test System Diagnostics
         </button>
       </div>
 

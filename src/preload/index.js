@@ -8,9 +8,10 @@ import { electronAPI } from '@electron-toolkit/preload'
  * Does NOT expose raw child_process, fs, or shell execution.
  */
 const api = {
-  // Application Information
+  // Application Information & Diagnostics (Phase 12)
   getAppVersion: () => ipcRenderer.invoke('app:get-version'),
   getAppInfo: () => ipcRenderer.invoke('app:get-info'),
+  checkEnvironment: () => ipcRenderer.invoke('system:check-environment'),
 
   /**
    * Safely retrieve the absolute filesystem path of a DOM File object in Electron.

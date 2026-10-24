@@ -39,6 +39,28 @@ export const apiService = {
   },
 
   /**
+   * Run full environment and tool dependency diagnostics (Phase 12)
+   * @returns {Promise<{
+   *   allRequiredReady: boolean,
+   *   summary: string,
+   *   readyCount: number,
+   *   totalCount: number,
+   *   tools: Record<string, object>
+   * }>}
+   */
+  async checkEnvironment() {
+    try {
+      if (window.api && typeof window.api.checkEnvironment === 'function') {
+        return await window.api.checkEnvironment()
+      }
+      throw new Error('Electron diagnostics API is unavailable.')
+    } catch (error) {
+      console.error('Error invoking system:check-environment:', error)
+      throw error
+    }
+  },
+
+  /**
    * Safely obtain the file path of a selected File object in Electron
    * @param {File} file
    * @returns {string|null}

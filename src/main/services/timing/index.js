@@ -30,6 +30,7 @@ export async function findFfprobeBinary() {
     }
   }
 
+  // 3. Fallback: check system PATH via `which` or `where`
   const lookupCmd = process.platform === 'win32' ? 'where' : 'which'
   try {
     const whichPath = await new Promise((resolve) => {
@@ -52,7 +53,21 @@ export async function findFfprobeBinary() {
     // Fall through
   }
 
-  return 'ffprobe'
+  // 4. Test if 'ffprobe' is directly available in environment
+  try {
+    const testProc = spawn('ffprobe', ['-version'])
+    const isWorking = await new Promise((resolve) => {
+      testProc.on('close', (code) => resolve(code === 0))
+      testProc.on('error', () => resolve(false))
+    })
+    if (isWorking) return 'ffprobe'
+  } catch {
+    // Ignore
+  }
+
+  throw new Error(
+    'ffprobe was not found on your system. ffprobe is required for media timing inspection. Fix: Install FFmpeg (which includes ffprobe) via Homebrew with "brew install ffmpeg", or set the FFPROBE_PATH environment variable.'
+  )
 }
 
 /**

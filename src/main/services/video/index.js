@@ -58,8 +58,21 @@ export async function findFfmpegBinary() {
     // Ignore lookup errors and fall through
   }
 
-  // If still not found, return 'ffmpeg' and let spawn attempt execution
-  return 'ffmpeg'
+  // 4. Test if 'ffmpeg' is directly available in environment
+  try {
+    const testProc = spawn('ffmpeg', ['-version'])
+    const isWorking = await new Promise((resolve) => {
+      testProc.on('close', (code) => resolve(code === 0))
+      testProc.on('error', () => resolve(false))
+    })
+    if (isWorking) return 'ffmpeg'
+  } catch {
+    // Ignore
+  }
+
+  throw new Error(
+    'FFmpeg was not found on your system. FFmpeg is required for audio extraction, synchronization, and video export. Fix: Install FFmpeg via Homebrew with "brew install ffmpeg", download from ffmpeg.org, or set the FFMPEG_PATH environment variable.'
+  )
 }
 
 /**

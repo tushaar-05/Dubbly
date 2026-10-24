@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react'
-import { Sparkles, SlidersHorizontal, Share2, Download } from 'lucide-react'
+import { Sparkles, SlidersHorizontal, Share2, Download, ShieldCheck } from 'lucide-react'
 import apiService from '../services/api'
 
 /**
  * Dubbly Top Navigation Header
- * Clean, minimal white bar with branding and actions inspired by Reference Image 1.
- * Fetches and displays the application version via secure IPC (Phase 3).
+ * Clean, minimal white bar with branding, app version, and system environment status.
  */
-function Header() {
+function Header({ onOpenDiagnostics, envStatus, isDiagnosticsLoading }) {
   const [appVersion, setAppVersion] = useState(null)
 
   useEffect(() => {
@@ -44,6 +43,25 @@ function Header() {
       </div>
 
       <div className="header-actions">
+        {/* System Environment & Dependencies Check Button (Phase 12) */}
+        <button
+          type="button"
+          className={`btn-header-env ${envStatus ? (envStatus.allRequiredReady ? 'ready' : 'warning') : ''}`}
+          onClick={onOpenDiagnostics}
+          title="Inspect required system tools (FFmpeg, whisper.cpp, Edge TTS, Tesseract) and models"
+        >
+          <ShieldCheck size={14} />
+          <span>
+            {isDiagnosticsLoading
+              ? 'Checking Tools...'
+              : envStatus
+                ? envStatus.allRequiredReady
+                  ? 'All Tools Ready'
+                  : `Setup Needed (${envStatus.totalCount - envStatus.readyCount})`
+                : 'System Check'}
+          </span>
+          <span className={`status-dot ${envStatus?.allRequiredReady ? 'ready' : 'warning'}`} />
+        </button>
         <button
           type="button"
           className="btn-header-secondary"

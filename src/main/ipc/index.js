@@ -8,6 +8,7 @@ import ttsService from '../services/tts'
 import timingService from '../services/timing'
 import subtitleService from '../services/subtitles'
 import ocrService from '../services/ocr'
+import diagnosticService from '../services/diagnostics'
 
 /**
  * IPC Handler Registry
@@ -20,7 +21,7 @@ import ocrService from '../services/ocr'
  */
 export function registerIpcHandlers() {
   /**
-   * Application Information Channels
+   * Application Information & System Environment Channels (Phase 3 & Phase 12)
    */
   ipcMain.handle('app:get-version', async () => {
     return app.getVersion()
@@ -31,6 +32,10 @@ export function registerIpcHandlers() {
       name: app.getName(),
       version: app.getVersion()
     }
+  })
+
+  ipcMain.handle('system:check-environment', async () => {
+    return await diagnosticService.checkEnvironment()
   })
 
   /**
