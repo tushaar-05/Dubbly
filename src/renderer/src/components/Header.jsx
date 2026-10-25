@@ -6,7 +6,7 @@ import apiService from '../services/api'
  * Dubbly Top Navigation Header
  * Clean, minimal white bar with branding, app version, and system environment status.
  */
-function Header({ onOpenDiagnostics, envStatus, isDiagnosticsLoading }) {
+function Header({ onOpenDiagnostics, envStatus, isDiagnosticsLoading, canExport = false, onExport }) {
   const [appVersion, setAppVersion] = useState(null)
 
   useEffect(() => {
@@ -62,35 +62,18 @@ function Header({ onOpenDiagnostics, envStatus, isDiagnosticsLoading }) {
           </span>
           <span className={`status-dot ${envStatus?.allRequiredReady ? 'ready' : 'warning'}`} />
         </button>
-        <button
-          type="button"
-          className="btn-header-secondary"
-          title="Pipeline presets (coming in future phases)"
-          disabled
-        >
-          <SlidersHorizontal size={14} />
-          <span>Presets</span>
-        </button>
 
-        <button
-          type="button"
-          className="btn-header-secondary"
-          title="Export option (available after dubbing)"
-          disabled
-        >
-          <Download size={14} />
-          <span>Export</span>
-        </button>
-
-        <button
-          type="button"
-          className="btn-header-primary"
-          title="Share project (coming soon)"
-          disabled
-        >
-          <Share2 size={14} />
-          <span>Share</span>
-        </button>
+        {canExport && (
+          <button
+            type="button"
+            className="btn-header-export"
+            onClick={onExport}
+            title="Reveal exported dubbed video in Finder / Explorer"
+          >
+            <Download size={14} />
+            <span>Exported Video</span>
+          </button>
+        )}
       </div>
     </header>
   )

@@ -130,6 +130,8 @@ function App() {
         onOpenDiagnostics={() => setIsDiagnosticsOpen(true)}
         envStatus={envStatus}
         isDiagnosticsLoading={isDiagnosticsLoading}
+        canExport={!!dubbingStatus.exportResult}
+        onExport={handleOpenExportFolder}
       />
 
       <main className="app-workspace">

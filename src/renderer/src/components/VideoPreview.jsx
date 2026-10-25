@@ -886,7 +886,19 @@ const VideoPreview = React.forwardRef(function VideoPreview(
 
   useImperativeHandle(ref, () => ({
     runFullDubbingPipeline,
-    openExportFolder: handleOpenExportFolder
+    openExportFolder: handleOpenExportFolder,
+    // Underlying test functions preserved for automated/programmatic testing
+    testInvalidFile: handleTestInvalidFile,
+    testMissingModel: handleTestMissingModel,
+    testTranslationError: handleTestTranslationError,
+    testTtsUnsupportedLang: handleTestTtsUnsupportedLang,
+    testTtsEmptySegments: handleTestTtsEmptySegments,
+    testExportError: handleTestExportError,
+    testScriptEditAndCache: handleTestScriptEditAndCache,
+    testSubtitleExport: handleTestSubtitleExport,
+    testOcrDetection: handleTestOcrDetection,
+    testDiagnostics: handleTestDiagnostics,
+    testFullDubbingPipeline: handleTestFullDubbingPipeline
   }))
 
   /**
@@ -1761,52 +1773,34 @@ const VideoPreview = React.forwardRef(function VideoPreview(
             </div>
 
             <div className="transcript-header-actions">
-              {/* Target Language Selector & Translation Action (Phase 6) */}
-              <div className="quick-lang-group">
-                <select
-                  className="quick-lang-select"
-                  value={targetLanguage}
-                  onChange={(e) => {
-                    const newLang = e.target.value
-                    if (onLanguageChange) onLanguageChange(newLang)
-                  }}
-                  title="Target language for translation"
-                >
-                  {INDIAN_LANGUAGES.map((l) => (
-                    <option key={l.code} value={l.code}>
-                      {l.name} ({l.native})
-                    </option>
-                  ))}
-                </select>
-
-                <button
-                  type="button"
-                  className="btn-translate-trigger"
-                  onClick={() => handleTranslate()}
-                  disabled={
-                    isTranslating ||
-                    !transcriptResult?.segments ||
-                    transcriptResult.segments.length === 0
-                  }
-                  title={
-                    !transcriptResult?.segments || transcriptResult.segments.length === 0
-                      ? 'No speech segments detected in this audio'
-                      : `Translate transcript into ${currentLangObj.name}`
-                  }
-                >
-                  {isTranslating ? (
-                    <>
-                      <Loader2 size={13} className="spin-icon" />
-                      <span>Translating...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Languages size={13} />
-                      <span>Translate to {currentLangObj.name}</span>
-                    </>
-                  )}
-                </button>
-              </div>
+              {/* Translation Action (Phase 6) */}
+              <button
+                type="button"
+                className="btn-translate-trigger"
+                onClick={() => handleTranslate()}
+                disabled={
+                  isTranslating ||
+                  !transcriptResult?.segments ||
+                  transcriptResult.segments.length === 0
+                }
+                title={
+                  !transcriptResult?.segments || transcriptResult.segments.length === 0
+                    ? 'No speech segments detected in this audio'
+                    : `Translate transcript into ${currentLangObj.name}`
+                }
+              >
+                {isTranslating ? (
+                  <>
+                    <Loader2 size={13} className="spin-icon" />
+                    <span>Translating...</span>
+                  </>
+                ) : (
+                  <>
+                    <Languages size={13} />
+                    <span>Translate to {currentLangObj.name}</span>
+                  </>
+                )}
+              </button>
 
               <button
                 type="button"
@@ -1936,56 +1930,34 @@ const VideoPreview = React.forwardRef(function VideoPreview(
             </div>
 
             <div className="translation-header-actions">
-              {/* Edge TTS Voice Selection (Phase 7) */}
-              <div className="tts-action-controls">
-                <div className="voice-select-wrapper">
-                  <Mic size={13} className="voice-select-icon" />
-                  <select
-                    className="tts-voice-select"
-                    value={selectedVoice}
-                    onChange={(e) => {
-                      setSelectedVoice(e.target.value)
-                      onVoiceChange?.(e.target.value)
-                    }}
-                    disabled={isGeneratingTts}
-                    title="Select Indian Neural Voice for Edge TTS"
-                  >
-                    {currentVoiceOptions.map((v) => (
-                      <option key={v.id} value={v.id}>
-                        {v.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <button
-                  type="button"
-                  className="btn-tts-trigger"
-                  onClick={() => handleGenerateSpeech()}
-                  disabled={
-                    isGeneratingTts ||
-                    !translationResult?.segments ||
-                    translationResult.segments.length === 0
-                  }
-                  title={
-                    !translationResult?.segments || translationResult.segments.length === 0
-                      ? 'No translated segments available to synthesize'
-                      : 'Generate or reuse voiceover audio clips for all segments via Edge TTS'
-                  }
-                >
-                  {isGeneratingTts ? (
-                    <>
-                      <Loader2 size={13} className="spin-icon" />
-                      <span>Generating Audio...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles size={13} />
-                      <span>Generate Voiceover</span>
-                    </>
-                  )}
-                </button>
-              </div>
+              {/* Generate Voiceover Action (Phase 7) */}
+              <button
+                type="button"
+                className="btn-tts-trigger"
+                onClick={() => handleGenerateSpeech()}
+                disabled={
+                  isGeneratingTts ||
+                  !translationResult?.segments ||
+                  translationResult.segments.length === 0
+                }
+                title={
+                  !translationResult?.segments || translationResult.segments.length === 0
+                    ? 'No translated segments available to synthesize'
+                    : 'Generate or reuse voiceover audio clips for all segments via Edge TTS'
+                }
+              >
+                {isGeneratingTts ? (
+                  <>
+                    <Loader2 size={13} className="spin-icon" />
+                    <span>Generating Audio...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={13} />
+                    <span>Generate Voiceover</span>
+                  </>
+                )}
+              </button>
 
               <button
                 type="button"
@@ -2687,140 +2659,6 @@ const VideoPreview = React.forwardRef(function VideoPreview(
         </div>
       )}
 
-      {/* Verification Helpers Row */}
-      <div className="test-helper-row">
-        <span className="test-helper-label">Verification Triggers:</span>
-        <button
-          type="button"
-          className="btn-text-link"
-          onClick={handleTestInvalidFile}
-          disabled={isExtracting || isTranscribing || isTranslating || isGeneratingTts || isExporting}
-        >
-          Test Invalid File Error
-        </button>
-        <span className="test-helper-dot">•</span>
-        <button
-          type="button"
-          className="btn-text-link"
-          onClick={handleTestMissingModel}
-          disabled={!extractionResult || isTranscribing || isTranslating || isGeneratingTts || isExporting}
-          title={!extractionResult ? 'Extract audio first to test' : 'Test missing model error'}
-        >
-          Test Missing Model Error
-        </button>
-        <span className="test-helper-dot">•</span>
-        <button
-          type="button"
-          className="btn-text-link"
-          onClick={handleTestTranslationError}
-          disabled={isTranslating || isGeneratingTts || isExporting}
-          title="Test empty transcript translation error"
-        >
-          Test Empty Translation Error
-        </button>
-        <span className="test-helper-dot">•</span>
-        <button
-          type="button"
-          className="btn-text-link"
-          onClick={handleTestTtsUnsupportedLang}
-          disabled={isGeneratingTts || isExporting}
-          title="Test unsupported TTS language error"
-        >
-          Test Unsupported TTS Lang
-        </button>
-        <span className="test-helper-dot">•</span>
-        <button
-          type="button"
-          className="btn-text-link"
-          onClick={handleTestTtsEmptySegments}
-          disabled={isGeneratingTts || isExporting}
-          title="Test empty TTS segments error"
-        >
-          Test Empty TTS Segments
-        </button>
-        <span className="test-helper-dot">•</span>
-        <button
-          type="button"
-          className="btn-text-link"
-          onClick={handleTestExportError}
-          disabled={isExporting}
-          title="Test video export failure handling"
-        >
-          Test Export Error
-        </button>
-        <span className="test-helper-dot">•</span>
-        <button
-          type="button"
-          className="btn-text-link"
-          onClick={handleTestScriptEditAndCache}
-          disabled={isGeneratingTts || isExporting}
-          title="Test script editing, timestamp preservation, and deterministic cache reuse"
-        >
-          Test Script Edit & Cache
-        </button>
-        <span className="test-helper-dot">•</span>
-        <button
-          type="button"
-          className="btn-text-link"
-          onClick={handleTestSubtitleExport}
-          disabled={isExportingSubtitles !== null}
-          title="Test SRT/VTT subtitle generation, edited text usage, and empty validation"
-        >
-          Test Subtitle Export
-        </button>
-        <span className="test-helper-dot">•</span>
-        <button
-          type="button"
-          className="btn-text-link"
-          onClick={handleTestOcrDetection}
-          disabled={isDetectingOcr || isTranslatingOcr}
-          title="Test OCR text detection, translation, and spoken transcript isolation"
-        >
-          Test OCR & Separation
-        </button>
-        <span className="test-helper-dot">•</span>
-        <button
-          type="button"
-          className="btn-text-link"
-          onClick={handleTestDiagnostics}
-          title="Verify environment diagnostics service, external tool discovery, and prerequisites"
-        >
-          Test System Diagnostics
-        </button>
-        <span className="test-helper-dot">•</span>
-        <button
-          type="button"
-          className="btn-text-link"
-          onClick={handleTestFullDubbingPipeline}
-          disabled={isExtracting || isTranscribing || isTranslating || isGeneratingTts || isExporting}
-          title="Execute complete automated dubbing pipeline (Extract → Transcribe → Translate → Synthesize → Export)"
-        >
-          Test Full Dubbing Pipeline
-        </button>
-      </div>
-
-      {/* Verification Test Result Feedback (displayed separately from main workflow error cards) */}
-      {testFeedback && (
-        <div
-          className={`test-feedback-pill ${
-            testFeedback.running ? 'running' : testFeedback.success ? 'passed' : 'failed'
-          }`}
-        >
-          <span className="test-feedback-text">
-            <strong>{testFeedback.name}:</strong> {testFeedback.message}
-          </span>
-          {!testFeedback.running && (
-            <button
-              type="button"
-              className="btn-dismiss-test"
-              onClick={() => setTestFeedback(null)}
-              title="Dismiss test result"
-            >
-              <X size={12} />
-            </button>
-          )}
-        </div>
-      )}
     </div>
   )
 })

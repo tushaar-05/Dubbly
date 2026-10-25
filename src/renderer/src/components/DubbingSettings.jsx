@@ -1,20 +1,17 @@
 import React, { useState } from 'react'
 import {
   Sparkles,
-  Languages,
   Sliders,
   Volume2,
   Subtitles,
   ScanText,
   Info,
-  Check,
   ChevronDown,
   Loader2,
   CheckCircle2,
   AlertCircle,
   FolderOpen,
-  RotateCcw,
-  Film
+  RotateCcw
 } from 'lucide-react'
 
 // The 6 supported Indian target languages
@@ -29,9 +26,9 @@ export const INDIAN_LANGUAGES = [
 
 /**
  * DubbingSettings Component
- * Minimalist settings panel inspired by reference UI.
- * Provides target language selection, neural voice choices, timing controls,
- * and executes the full automated dubbing pipeline via the Start Dubbing button.
+ * Polished, minimal settings panel.
+ * Provides target language selection, neural voice choices, grouped advanced options
+ * (Lip Sync, Subtitles, OCR), and the primary Start Dubbing action.
  */
 function DubbingSettings({
   hasVideo,
@@ -53,7 +50,7 @@ function DubbingSettings({
   const [syncPercentage, setSyncPercentage] = useState(40)
   const [generateSubtitles, setGenerateSubtitles] = useState(true)
   const [ocrEnabled, setOcrEnabled] = useState(false)
-  const [activeTab, setActiveTab] = useState('enhance')
+  const [showAdvanced, setShowAdvanced] = useState(false)
 
   const getStepLabel = (step) => {
     switch (step) {
@@ -116,59 +113,29 @@ function DubbingSettings({
 
   return (
     <div className="settings-panel">
-      {/* Top Tab Bar from Reference Image 1 */}
-      <div className="settings-tabs">
-        <button
-          type="button"
-          className={`tab-btn ${activeTab === 'enhance' ? 'active' : ''}`}
-          onClick={() => setActiveTab('enhance')}
-          title="Enhancements"
-        >
-          <Sparkles size={18} />
-        </button>
-        <button
-          type="button"
-          className={`tab-btn ${activeTab === 'audio' ? 'active' : ''}`}
-          onClick={() => setActiveTab('audio')}
-          title="Audio & Timing"
-        >
-          <Volume2 size={18} />
-        </button>
-        <button
-          type="button"
-          className={`tab-btn ${activeTab === 'subtitles' ? 'active' : ''}`}
-          onClick={() => setActiveTab('subtitles')}
-          title="Subtitles & OCR"
-        >
-          <Subtitles size={18} />
-        </button>
+      {/* Settings Header */}
+      <div className="settings-header">
+        <div className="settings-title-group">
+          <Sliders size={16} className="text-primary" />
+          <h2 className="settings-title">Dubbing Settings</h2>
+        </div>
+        <span className="settings-status-pill">
+          {hasVideo ? 'Video Ready' : 'Awaiting Video'}
+        </span>
       </div>
 
       <div className="settings-content">
-        {/* Section: Smart Enhancements */}
-        <div className="setting-row-card">
-          <div className="setting-info">
-            <span className="setting-label">Smart Enhancements</span>
-            <span className="setting-desc">Enable automated timing and audio smoothing</span>
+        {/* Section 1: Target Language & Voice Selection (Primary & Easy to Find) */}
+        <div className="setting-card-section">
+          <div className="section-header-subtle">
+            <span className="section-title-text">Language & Voice</span>
           </div>
-          <label className="toggle-switch">
-            <input
-              type="checkbox"
-              checked={smartEnhance}
-              onChange={(e) => setSmartEnhance(e.target.checked)}
-            />
-            <span className="slider-pill"></span>
-          </label>
-        </div>
 
-        <div className="divider" />
-
-        {/* Section: Language Configuration */}
-        <div className="setting-section">
+          {/* Source Language (Fixed English) */}
           <div className="setting-field-row">
             <div className="field-label-group">
               <span className="field-label">Source Language</span>
-              <Info size={14} className="info-icon" title="Original video audio language" />
+              <Info size={13} className="info-icon" title="Original video audio language" />
             </div>
             <div className="language-badge locked">
               <span className="flag-circle">🇬🇧</span>
@@ -176,13 +143,14 @@ function DubbingSettings({
             </div>
           </div>
 
-          <div className="setting-field-row mt-3">
+          {/* Target Language Dropdown */}
+          <div className="setting-field-row">
             <div className="field-label-group">
               <span className="field-label">Target Language</span>
               <Info
-                size={14}
+                size={13}
                 className="info-icon"
-                title="Dubbing will translate and generate speech in this language"
+                title="Dubbing will translate and synthesize speech in this language"
               />
             </div>
 
@@ -204,12 +172,12 @@ function DubbingSettings({
             </div>
           </div>
 
-          {/* Neural Voice Selection Option (Phase 13) */}
-          <div className="setting-field-row mt-3">
+          {/* Neural Speaker Voice Dropdown */}
+          <div className="setting-field-row">
             <div className="field-label-group">
               <span className="field-label">Neural Voice</span>
               <Info
-                size={14}
+                size={13}
                 className="info-icon"
                 title="Select natural neural speaker for voiceover synthesis"
               />
@@ -233,89 +201,127 @@ function DubbingSettings({
           </div>
         </div>
 
-        <div className="divider" />
-
-        {/* Section: Lip Sync / Timing Adjustment */}
-        <div className="setting-section">
-          <div className="setting-row-header">
-            <div className="field-label-group">
-              <span className="field-label">Lip Sync Adjustment</span>
-              <Info
+        {/* Section 2: Grouped Advanced Options (Lip-Sync, Subtitles, OCR, Smart Enhance) */}
+        <div className="setting-card-section advanced-section">
+          <button
+            type="button"
+            className="advanced-toggle-btn"
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            title="Toggle advanced options (Lip-Sync, Subtitles, OCR, Smart Enhancements)"
+          >
+            <div className="advanced-toggle-label">
+              <Volume2 size={15} className="text-primary" />
+              <span>Advanced Options</span>
+            </div>
+            <div className="advanced-toggle-status">
+              <span className="advanced-summary-text">
+                {showAdvanced ? 'Hide' : 'Lip-Sync, Subtitles, OCR'}
+              </span>
+              <ChevronDown
                 size={14}
-                className="info-icon"
-                title="Time-stretching adjusts speech pace to fit video mouth movements"
+                className={`advanced-chevron ${showAdvanced ? 'rotated' : ''}`}
               />
             </div>
-            <label className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={lipSyncEnabled}
-                onChange={(e) => setLipSyncEnabled(e.target.checked)}
-              />
-              <span className="slider-pill"></span>
-            </label>
-          </div>
+          </button>
 
-          {lipSyncEnabled && (
-            <div className="sync-slider-card">
-              <div className="slider-labels">
-                <span>0%</span>
-                <span className="slider-badge">{syncPercentage}%</span>
-                <span>100%</span>
+          {showAdvanced && (
+            <div className="advanced-content-body">
+              {/* Lip Sync Adjustment */}
+              <div className="advanced-subgroup">
+                <div className="setting-row-card">
+                  <div className="setting-info">
+                    <span className="setting-label text-sm">Lip Sync Adjustment</span>
+                    <span className="setting-desc">Pace speech rate to video intervals</span>
+                  </div>
+                  <label className="toggle-switch">
+                    <input
+                      type="checkbox"
+                      checked={lipSyncEnabled}
+                      onChange={(e) => setLipSyncEnabled(e.target.checked)}
+                    />
+                    <span className="slider-pill"></span>
+                  </label>
+                </div>
+
+                {lipSyncEnabled && (
+                  <div className="sync-slider-card">
+                    <div className="slider-labels">
+                      <span>0%</span>
+                      <span className="slider-badge">{syncPercentage}%</span>
+                      <span>100%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={syncPercentage}
+                      onChange={(e) => setSyncPercentage(parseInt(e.target.value, 10))}
+                      className="range-input"
+                    />
+                  </div>
+                )}
               </div>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={syncPercentage}
-                onChange={(e) => setSyncPercentage(parseInt(e.target.value, 10))}
-                className="range-input"
-              />
-              <span className="slider-hint">
-                Paces generated speech rate to match original speech intervals
-              </span>
+
+              <div className="divider-subtle" />
+
+              {/* Subtitle Generation */}
+              <div className="setting-row-card">
+                <div className="setting-info">
+                  <span className="setting-label text-sm">Generate Subtitles</span>
+                  <span className="setting-desc">Export translated SRT / WebVTT files</span>
+                </div>
+                <label className="toggle-switch">
+                  <input
+                    type="checkbox"
+                    checked={generateSubtitles}
+                    onChange={(e) => setGenerateSubtitles(e.target.checked)}
+                  />
+                  <span className="slider-pill"></span>
+                </label>
+              </div>
+
+              <div className="divider-subtle" />
+
+              {/* On-Screen Text OCR */}
+              <div className="setting-row-card">
+                <div className="setting-info">
+                  <span className="setting-label text-sm">On-Screen Text OCR</span>
+                  <span className="setting-desc">Detect visible titles in video frames</span>
+                </div>
+                <label className="toggle-switch">
+                  <input
+                    type="checkbox"
+                    checked={ocrEnabled}
+                    onChange={(e) => setOcrEnabled(e.target.checked)}
+                  />
+                  <span className="slider-pill"></span>
+                </label>
+              </div>
+
+              <div className="divider-subtle" />
+
+              {/* Smart Enhancements */}
+              <div className="setting-row-card">
+                <div className="setting-info">
+                  <span className="setting-label text-sm">Smart Enhancements</span>
+                  <span className="setting-desc">Automated timing & audio smoothing</span>
+                </div>
+                <label className="toggle-switch">
+                  <input
+                    type="checkbox"
+                    checked={smartEnhance}
+                    onChange={(e) => setSmartEnhance(e.target.checked)}
+                  />
+                  <span className="slider-pill"></span>
+                </label>
+              </div>
             </div>
           )}
         </div>
 
-        <div className="divider" />
-
-        {/* Section: Subtitles & OCR options */}
-        <div className="setting-section">
-          <div className="setting-row-card py-1">
-            <div className="setting-info">
-              <span className="setting-label text-sm">Generate Subtitles</span>
-              <span className="setting-desc">Produce translated SRT/VTT subtitles</span>
-            </div>
-            <label className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={generateSubtitles}
-                onChange={(e) => setGenerateSubtitles(e.target.checked)}
-              />
-              <span className="slider-pill"></span>
-            </label>
-          </div>
-
-          <div className="setting-row-card py-1 mt-2">
-            <div className="setting-info">
-              <span className="setting-label text-sm">On-Screen Text OCR</span>
-              <span className="setting-desc">Detect and translate video text banners</span>
-            </div>
-            <label className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={ocrEnabled}
-                onChange={(e) => setOcrEnabled(e.target.checked)}
-              />
-              <span className="slider-pill"></span>
-            </label>
-          </div>
-        </div>
-
-        {/* Bottom Action: Fully Functional Start Dubbing button (Phase 13) */}
+        {/* Section 3: Bottom Action: Prominent Start Dubbing Button + Contextual Feedback */}
         <div className="settings-footer">
-          {/* Live Progress Card when Dubbing is Running */}
+          {/* Live Progress Card - only rendered when dubbing is active */}
           {isDubbing && (
             <div className="dubbing-live-progress">
               <div className="dubbing-step-row">
@@ -336,7 +342,7 @@ function DubbingSettings({
             </div>
           )}
 
-          {/* Success Banner when Export is Complete */}
+          {/* Success Banner - only rendered when video export succeeds */}
           {exportResult && !isDubbing && (
             <div className="dubbing-success-banner">
               <div className="dubbing-success-header">
@@ -344,7 +350,8 @@ function DubbingSettings({
                 <strong>Dubbing Complete!</strong>
               </div>
               <p className="dubbing-success-meta">
-                Language: {selectedLanguage.toUpperCase()} • Duration: {exportResult.duration ? `${Math.round(exportResult.duration)}s` : 'Full'}
+                Language: {selectedLanguage.toUpperCase()} • Duration:{' '}
+                {exportResult.duration ? `${Math.round(exportResult.duration)}s` : 'Full'}
               </p>
               <div className="dubbing-success-actions">
                 <button
@@ -360,7 +367,7 @@ function DubbingSettings({
             </div>
           )}
 
-          {/* Error Banner if Dubbing Pipeline Fails */}
+          {/* Error Banner - only rendered when dubbing fails */}
           {dubbingError && !isDubbing && (
             <div className="dubbing-error-banner">
               <div className="dubbing-error-header">
@@ -380,6 +387,7 @@ function DubbingSettings({
             </div>
           )}
 
+          {/* Primary Action Button */}
           <button
             type="button"
             className={`btn-start-dubbing ${isDubbing ? 'running' : ''}`}
@@ -398,7 +406,7 @@ function DubbingSettings({
 
           <p className="pipeline-notice">
             {!hasVideo
-              ? 'Select or drop an English video to configure dubbing'
+              ? 'Select or drop an English video to begin'
               : isDubbing
                 ? 'Automated pipeline active — keep Dubbly open'
                 : 'Runs Extract → Transcribe → Translate → Synthesize → Export'}
