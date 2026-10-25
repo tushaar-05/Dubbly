@@ -8,7 +8,13 @@ import {
   ScanText,
   Info,
   Check,
-  ChevronDown
+  ChevronDown,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  FolderOpen,
+  RotateCcw,
+  Film
 } from 'lucide-react'
 
 // The 6 supported Indian target languages
@@ -23,13 +29,24 @@ export const INDIAN_LANGUAGES = [
 
 /**
  * DubbingSettings Component
- * Minimalist settings panel inspired by the reference screenshots.
- * Provides target language selection, timing/lip-sync controls, and dubbing trigger.
+ * Minimalist settings panel inspired by reference UI.
+ * Provides target language selection, neural voice choices, timing controls,
+ * and executes the full automated dubbing pipeline via the Start Dubbing button.
  */
 function DubbingSettings({
   hasVideo,
-  selectedLanguage,
-  onLanguageChange
+  selectedLanguage = 'hi',
+  onLanguageChange,
+  selectedVoice,
+  onVoiceChange,
+  availableVoices = [],
+  onStartDubbing,
+  isDubbing = false,
+  dubbingStep = null,
+  pipelineProgress = null,
+  dubbingError = null,
+  exportResult = null,
+  onOpenFolder
 }) {
   const [smartEnhance, setSmartEnhance] = useState(true)
   const [lipSyncEnabled, setLipSyncEnabled] = useState(true)
@@ -37,6 +54,65 @@ function DubbingSettings({
   const [generateSubtitles, setGenerateSubtitles] = useState(true)
   const [ocrEnabled, setOcrEnabled] = useState(false)
   const [activeTab, setActiveTab] = useState('enhance')
+
+  const getStepLabel = (step) => {
+    switch (step) {
+      case 'extracting':
+        return 'Step 1/5: Extracting Audio'
+      case 'transcribing':
+        return 'Step 2/5: Transcribing Speech'
+      case 'translating':
+        return 'Step 3/5: Translating Script'
+      case 'tts':
+        return 'Step 4/5: Generating Voiceover'
+      case 'exporting':
+        return 'Step 5/5: Exporting Video'
+      default:
+        return 'Processing Pipeline...'
+    }
+  }
+
+  const getButtonText = () => {
+    if (!isDubbing) {
+      return (
+        <>
+          <Sparkles size={16} />
+          <span>Start Dubbing</span>
+        </>
+      )
+    }
+
+    let text = 'Dubbing Video...'
+    switch (dubbingStep) {
+      case 'starting':
+        text = 'Starting Dubbing...'
+        break
+      case 'extracting':
+        text = 'Extracting Audio...'
+        break
+      case 'transcribing':
+        text = 'Transcribing Speech...'
+        break
+      case 'translating':
+        text = 'Translating Script...'
+        break
+      case 'tts':
+        text = 'Synthesizing Speech...'
+        break
+      case 'exporting':
+        text = 'Exporting Video...'
+        break
+      default:
+        text = 'Dubbing Video...'
+    }
+
+    return (
+      <>
+        <Loader2 size={16} className="spin-icon" />
+        <span>{text}</span>
+      </>
+    )
+  }
 
   return (
     <div className="settings-panel">
@@ -116,6 +192,7 @@ function DubbingSettings({
                 className="language-select"
                 value={selectedLanguage}
                 onChange={(e) => onLanguageChange(e.target.value)}
+                disabled={isDubbing}
               >
                 {INDIAN_LANGUAGES.map((lang) => (
                   <option key={lang.code} value={lang.code}>
@@ -126,11 +203,39 @@ function DubbingSettings({
               <ChevronDown size={14} className="select-chevron" />
             </div>
           </div>
+
+          {/* Neural Voice Selection Option (Phase 13) */}
+          <div className="setting-field-row mt-3">
+            <div className="field-label-group">
+              <span className="field-label">Neural Voice</span>
+              <Info
+                size={14}
+                className="info-icon"
+                title="Select natural neural speaker for voiceover synthesis"
+              />
+            </div>
+
+            <div className="select-wrapper">
+              <select
+                className="language-select voice-select"
+                value={selectedVoice}
+                onChange={(e) => onVoiceChange && onVoiceChange(e.target.value)}
+                disabled={isDubbing}
+              >
+                {availableVoices.map((voice) => (
+                  <option key={voice.id} value={voice.id}>
+                    {voice.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={14} className="select-chevron" />
+            </div>
+          </div>
         </div>
 
         <div className="divider" />
 
-        {/* Section: Lip Sync / Timing Adjustment (Matching Reference Image 1) */}
+        {/* Section: Lip Sync / Timing Adjustment */}
         <div className="setting-section">
           <div className="setting-row-header">
             <div className="field-label-group">
@@ -208,26 +313,95 @@ function DubbingSettings({
           </div>
         </div>
 
-        {/* Bottom Action: Disabled Start Dubbing button */}
+        {/* Bottom Action: Fully Functional Start Dubbing button (Phase 13) */}
         <div className="settings-footer">
+          {/* Live Progress Card when Dubbing is Running */}
+          {isDubbing && (
+            <div className="dubbing-live-progress">
+              <div className="dubbing-step-row">
+                <span className="dubbing-step-chip">{getStepLabel(dubbingStep)}</span>
+                {pipelineProgress?.percent !== undefined && (
+                  <span className="dubbing-percent">{pipelineProgress.percent}%</span>
+                )}
+              </div>
+              <p className="dubbing-message">
+                {pipelineProgress?.message || 'Processing video dubbing pipeline...'}
+              </p>
+              <div className="pipeline-progress-track">
+                <div
+                  className="pipeline-progress-fill"
+                  style={{ width: `${pipelineProgress?.percent || 20}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Success Banner when Export is Complete */}
+          {exportResult && !isDubbing && (
+            <div className="dubbing-success-banner">
+              <div className="dubbing-success-header">
+                <CheckCircle2 size={16} className="text-success" />
+                <strong>Dubbing Complete!</strong>
+              </div>
+              <p className="dubbing-success-meta">
+                Language: {selectedLanguage.toUpperCase()} • Duration: {exportResult.duration ? `${Math.round(exportResult.duration)}s` : 'Full'}
+              </p>
+              <div className="dubbing-success-actions">
+                <button
+                  type="button"
+                  className="btn-success-action"
+                  onClick={onOpenFolder}
+                  title="Reveal exported video in system Finder / Explorer"
+                >
+                  <FolderOpen size={13} />
+                  <span>Show in Folder</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Error Banner if Dubbing Pipeline Fails */}
+          {dubbingError && !isDubbing && (
+            <div className="dubbing-error-banner">
+              <div className="dubbing-error-header">
+                <AlertCircle size={16} className="text-danger" />
+                <strong>Dubbing Failed</strong>
+              </div>
+              <p className="dubbing-error-message">{dubbingError}</p>
+              <button
+                type="button"
+                className="btn-retry-dubbing"
+                onClick={onStartDubbing}
+                title="Retry the dubbing pipeline"
+              >
+                <RotateCcw size={13} />
+                <span>Retry Dubbing</span>
+              </button>
+            </div>
+          )}
+
           <button
             type="button"
-            className="btn-start-dubbing"
-            disabled
+            className={`btn-start-dubbing ${isDubbing ? 'running' : ''}`}
+            disabled={!hasVideo || isDubbing}
+            onClick={onStartDubbing}
             title={
-              hasVideo
-                ? 'Dubbing pipeline will be implemented in future phases'
-                : 'Please select a video file first'
+              !hasVideo
+                ? 'Please select or drop a video file first'
+                : isDubbing
+                  ? 'Dubbing pipeline is in progress...'
+                  : 'Run complete pipeline: Extract → Transcribe → Translate → Synthesize → Export'
             }
           >
-            <Sparkles size={16} />
-            <span>Start Dubbing</span>
+            {getButtonText()}
           </button>
 
           <p className="pipeline-notice">
-            {hasVideo
-              ? 'Complete pipeline active: Extract → Transcribe → Translate → Voiceover → Export'
-              : 'Select or drop an English video to configure dubbing'}
+            {!hasVideo
+              ? 'Select or drop an English video to configure dubbing'
+              : isDubbing
+                ? 'Automated pipeline active — keep Dubbly open'
+                : 'Runs Extract → Transcribe → Translate → Synthesize → Export'}
           </p>
         </div>
       </div>

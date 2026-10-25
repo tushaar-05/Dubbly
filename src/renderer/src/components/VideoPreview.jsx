@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useImperativeHandle } from 'react'
 import {
   Play,
   Pause,
@@ -74,14 +74,20 @@ export const INDIAN_VOICE_CONFIG = {
  * Whisper.cpp speech transcription, Google Translate multilingual translation,
  * and Edge TTS voiceover generation.
  */
-function VideoPreview({
-  videoFile,
-  previewUrl,
-  targetLanguage = 'hi',
-  onLanguageChange,
-  onReplace,
-  onRemove
-}) {
+const VideoPreview = React.forwardRef(function VideoPreview(
+  {
+    videoFile,
+    previewUrl,
+    targetLanguage = 'hi',
+    selectedVoice: propSelectedVoice,
+    onVoiceChange,
+    onLanguageChange,
+    onReplace,
+    onRemove,
+    onPipelineStatusChange
+  },
+  ref
+) {
   const videoRef = useRef(null)
   const replaceInputRef = useRef(null)
 
@@ -159,14 +165,18 @@ function VideoPreview({
     }
   }, [])
 
-  // Update selected voice whenever target language changes
+  // Update selected voice whenever target language changes or propSelectedVoice updates
   useEffect(() => {
-    const langKey = targetLanguage ? targetLanguage.toLowerCase() : 'hi'
-    const available = INDIAN_VOICE_CONFIG[langKey]
-    if (available && available.length > 0) {
-      setSelectedVoice(available[0].id)
+    if (propSelectedVoice) {
+      setSelectedVoice(propSelectedVoice)
+    } else {
+      const langKey = targetLanguage ? targetLanguage.toLowerCase() : 'hi'
+      const available = INDIAN_VOICE_CONFIG[langKey]
+      if (available && available.length > 0) {
+        setSelectedVoice(available[0].id)
+      }
     }
-  }, [targetLanguage])
+  }, [targetLanguage, propSelectedVoice])
 
   // Reset playback, extraction, transcription, translation, TTS, export, subtitles, OCR, and progress states when a new preview URL is loaded
   useEffect(() => {
@@ -648,6 +658,236 @@ function VideoPreview({
       await apiService.showInFolder(exportResult.outputPath)
     }
   }
+
+  /**
+   * Run Complete Automated Dubbing Pipeline (Phase 13)
+   * Connects Start Dubbing button to the pipeline in order:
+   * 1. Extract audio (if not already extracted)
+   * 2. Transcribe speech using whisper.cpp (if not already transcribed)
+   * 3. Translate transcript into selected target language (if needed)
+   * 4. Synthesize voice clips with Microsoft Edge TTS using selected voice
+   * 5. Synchronize audio and export dubbed video with FFmpeg
+   */
+  const runFullDubbingPipeline = async () => {
+    if (!videoFile) {
+      const msg = 'Please select a video file first.'
+      setExportError(msg)
+      onPipelineStatusChange?.({ isDubbing: false, step: 'error', error: msg })
+      return
+    }
+
+    const videoPath = apiService.getPathForFile(videoFile)
+    if (!videoPath) {
+      const msg =
+        'Could not access the local filesystem path for this video. Please re-select the file using Browse.'
+      setExportError(msg)
+      onPipelineStatusChange?.({ isDubbing: false, step: 'error', error: msg })
+      return
+    }
+
+    if (isExtracting || isTranscribing || isTranslating || isGeneratingTts || isExporting) {
+      console.warn('[Dubbly] Dubbing pipeline is already running.')
+      return
+    }
+
+    try {
+      setExportError(null)
+      setTestFeedback(null)
+      onPipelineStatusChange?.({
+        isDubbing: true,
+        step: 'starting',
+        progress: { percent: 5, message: 'Initializing automated dubbing pipeline...' },
+        error: null,
+        exportResult: null
+      })
+
+      // ------------------------------------------------------------------
+      // STEP 1: Audio Extraction (FFmpeg 16kHz WAV)
+      // ------------------------------------------------------------------
+      let currentAudioPath = extractionResult?.outputPath
+      if (!currentAudioPath) {
+        console.log('[Dubbly] Pipeline Step 1/5: Extracting audio from video...')
+        setIsExtracting(true)
+        onPipelineStatusChange?.({
+          isDubbing: true,
+          step: 'extracting',
+          progress: { percent: 15, message: 'Extracting 16kHz mono audio from video...' }
+        })
+
+        const extractRes = await apiService.extractAudio(videoPath)
+        setExtractionResult(extractRes)
+        currentAudioPath = extractRes.outputPath
+
+        try {
+          const blobUrl = await apiService.getAudioBlobUrl(extractRes.outputPath)
+          setExtractedAudioUrl(blobUrl)
+        } catch (blobErr) {
+          console.warn('Could not load audio blob:', blobErr)
+        }
+        setIsExtracting(false)
+      } else {
+        console.log('[Dubbly] Pipeline Step 1/5: Reusing existing extracted audio:', currentAudioPath)
+      }
+
+      // ------------------------------------------------------------------
+      // STEP 2: Speech Transcription (whisper.cpp)
+      // ------------------------------------------------------------------
+      let currentTranscript = transcriptResult
+      if (!currentTranscript?.segments || currentTranscript.segments.length === 0) {
+        console.log('[Dubbly] Pipeline Step 2/5: Transcribing speech with whisper.cpp...')
+        setIsTranscribing(true)
+        onPipelineStatusChange?.({
+          isDubbing: true,
+          step: 'transcribing',
+          progress: { percent: 35, message: 'Transcribing speech with whisper.cpp...' }
+        })
+
+        const transRes = await apiService.transcribeAudio(currentAudioPath)
+        setTranscriptResult(transRes)
+        currentTranscript = transRes
+        setIsTranscribing(false)
+      } else {
+        console.log(
+          `[Dubbly] Pipeline Step 2/5: Reusing existing transcript (${currentTranscript.segments.length} segments)`
+        )
+      }
+
+      if (!currentTranscript?.segments || currentTranscript.segments.length === 0) {
+        throw new Error(
+          'No speech segments were detected in the audio. Cannot dub a video with no spoken content.'
+        )
+      }
+
+      // ------------------------------------------------------------------
+      // STEP 3: Multilingual Translation (Google Translate)
+      // ------------------------------------------------------------------
+      const targetLang = targetLanguage || 'hi'
+      let currentTranslation = translationResult
+      const needsTranslation =
+        !currentTranslation?.segments ||
+        currentTranslation.segments.length === 0 ||
+        currentTranslation.targetLanguage !== targetLang
+
+      if (needsTranslation) {
+        console.log(`[Dubbly] Pipeline Step 3/5: Translating into ${targetLang}...`)
+        setIsTranslating(true)
+        onPipelineStatusChange?.({
+          isDubbing: true,
+          step: 'translating',
+          progress: { percent: 55, message: `Translating transcript into ${targetLang.toUpperCase()}...` }
+        })
+
+        const transResult = await apiService.translateTranscript(
+          currentTranscript.segments,
+          targetLang
+        )
+        setTranslationResult(transResult)
+        currentTranslation = transResult
+        setIsTranslating(false)
+      } else {
+        console.log(`[Dubbly] Pipeline Step 3/5: Reusing existing translation for ${targetLang}`)
+      }
+
+      // ------------------------------------------------------------------
+      // STEP 4: Voiceover Speech Synthesis (Edge TTS)
+      // ------------------------------------------------------------------
+      const voiceOptions = INDIAN_VOICE_CONFIG[targetLang] || []
+      const voiceToUse =
+        propSelectedVoice || selectedVoice || voiceOptions[0]?.id || 'hi-IN-MadhurNeural'
+
+      console.log(`[Dubbly] Pipeline Step 4/5: Generating voice clips with "${voiceToUse}"...`)
+      setIsGeneratingTts(true)
+      onPipelineStatusChange?.({
+        isDubbing: true,
+        step: 'tts',
+        progress: { percent: 75, message: `Synthesizing voice clips with Edge TTS (${voiceToUse})...` }
+      })
+
+      const ttsRes = await apiService.generateSpeech(
+        currentTranslation.segments,
+        targetLang,
+        voiceToUse
+      )
+      setTtsResult(ttsRes)
+
+      // Preload in-memory blob URLs for instant segment playback
+      const newBlobUrls = {}
+      for (const clip of ttsRes.clips) {
+        if (clip.hasAudio && clip.audioPath) {
+          try {
+            const blobUrl = await apiService.getTtsAudioBlobUrl(clip.audioPath)
+            newBlobUrls[clip.id] = blobUrl
+          } catch (blobErr) {
+            console.warn(`Could not load audio blob for clip #${clip.id}:`, blobErr)
+          }
+        }
+      }
+      setTtsClipBlobs(newBlobUrls)
+      setIsGeneratingTts(false)
+
+      // ------------------------------------------------------------------
+      // STEP 5: Synchronization & Video Export (FFmpeg)
+      // ------------------------------------------------------------------
+      console.log('[Dubbly] Pipeline Step 5/5: Synchronizing and exporting dubbed video...')
+      setIsExporting(true)
+      onPipelineStatusChange?.({
+        isDubbing: true,
+        step: 'exporting',
+        progress: { percent: 90, message: 'Synchronizing audio track and exporting dubbed video...' }
+      })
+
+      if (exportedVideoBlobUrl) {
+        URL.revokeObjectURL(exportedVideoBlobUrl)
+        setExportedVideoBlobUrl(null)
+      }
+
+      const expRes = await apiService.exportDubbedVideo(
+        videoPath,
+        ttsRes.clips,
+        targetLang
+      )
+      setExportResult(expRes)
+
+      // Load browser Blob URL for in-app video playback preview
+      try {
+        const previewBlobUrl = await apiService.getExportedVideoBlobUrl(expRes.outputPath)
+        setExportedVideoBlobUrl(previewBlobUrl)
+      } catch (blobErr) {
+        console.warn('Could not load exported video blob URL for preview:', blobErr)
+      }
+
+      setIsExporting(false)
+      onPipelineStatusChange?.({
+        isDubbing: false,
+        step: 'done',
+        progress: { percent: 100, message: 'Dubbed video exported successfully!' },
+        error: null,
+        exportResult: expRes
+      })
+      console.log('[Dubbly] Automated dubbing pipeline completed successfully!')
+    } catch (err) {
+      console.error('[Dubbly] Dubbing pipeline error:', err)
+      const errorMsg = err.message || 'Dubbing pipeline failed.'
+      setExportError(errorMsg)
+      setIsExtracting(false)
+      setIsTranscribing(false)
+      setIsTranslating(false)
+      setIsGeneratingTts(false)
+      setIsExporting(false)
+      onPipelineStatusChange?.({
+        isDubbing: false,
+        step: 'error',
+        progress: null,
+        error: errorMsg,
+        exportResult: null
+      })
+    }
+  }
+
+  useImperativeHandle(ref, () => ({
+    runFullDubbingPipeline,
+    openExportFolder: handleOpenExportFolder
+  }))
 
   /**
    * Handle Subtitle Export in SRT or WebVTT Format (Phase 10)
@@ -1158,6 +1398,33 @@ function VideoPreview({
         name: 'System Diagnostics Test',
         success: false,
         message: `Failed: ${summary}`
+      })
+    }
+  }
+
+  /**
+   * Test Full Dubbing Pipeline Helper
+   */
+  const handleTestFullDubbingPipeline = async () => {
+    try {
+      setTestFeedback({
+        running: true,
+        name: 'Test Full Dubbing Pipeline',
+        message: 'Running complete video dubbing pipeline (Extract → Transcribe → Translate → Synthesize → Export)...'
+      })
+      await runFullDubbingPipeline()
+      setTestFeedback({
+        running: false,
+        success: true,
+        name: 'Test Full Dubbing Pipeline',
+        message: 'Dubbing pipeline completed successfully! Dubbed video is ready.'
+      })
+    } catch (err) {
+      setTestFeedback({
+        running: false,
+        success: false,
+        name: 'Test Full Dubbing Pipeline',
+        message: `Pipeline failed: ${err.message}`
       })
     }
   }
@@ -1676,7 +1943,10 @@ function VideoPreview({
                   <select
                     className="tts-voice-select"
                     value={selectedVoice}
-                    onChange={(e) => setSelectedVoice(e.target.value)}
+                    onChange={(e) => {
+                      setSelectedVoice(e.target.value)
+                      onVoiceChange?.(e.target.value)
+                    }}
                     disabled={isGeneratingTts}
                     title="Select Indian Neural Voice for Edge TTS"
                   >
@@ -2517,6 +2787,16 @@ function VideoPreview({
         >
           Test System Diagnostics
         </button>
+        <span className="test-helper-dot">•</span>
+        <button
+          type="button"
+          className="btn-text-link"
+          onClick={handleTestFullDubbingPipeline}
+          disabled={isExtracting || isTranscribing || isTranslating || isGeneratingTts || isExporting}
+          title="Execute complete automated dubbing pipeline (Extract → Transcribe → Translate → Synthesize → Export)"
+        >
+          Test Full Dubbing Pipeline
+        </button>
       </div>
 
       {/* Verification Test Result Feedback (displayed separately from main workflow error cards) */}
@@ -2543,6 +2823,6 @@ function VideoPreview({
       )}
     </div>
   )
-}
+})
 
 export default VideoPreview

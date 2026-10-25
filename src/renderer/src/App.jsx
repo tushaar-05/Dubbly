@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import Header from './components/Header'
 import VideoUpload from './components/VideoUpload'
-import VideoPreview from './components/VideoPreview'
+import VideoPreview, { INDIAN_VOICE_CONFIG } from './components/VideoPreview'
 import DubbingSettings from './components/DubbingSettings'
 import EnvironmentModal from './components/EnvironmentModal'
 import apiService from './services/api'
@@ -9,12 +9,24 @@ import { AlertCircle, Wrench } from 'lucide-react'
 
 /**
  * Dubbly Main Application Component
- * Phase 2 - 12: Complete AI Video Dubbing & Translation Studio with Environment Diagnostics.
+ * Phase 2 - 13: Complete AI Video Dubbing & Translation Studio with Full Pipeline Execution.
  */
 function App() {
   const [videoFile, setVideoFile] = useState(null)
   const [previewUrl, setPreviewUrl] = useState(null)
   const [selectedLanguage, setSelectedLanguage] = useState('hi') // Default to Hindi
+  const [selectedVoice, setSelectedVoice] = useState('hi-IN-MadhurNeural')
+
+  // Pipeline Execution State (Phase 13)
+  const [dubbingStatus, setDubbingStatus] = useState({
+    isDubbing: false,
+    step: null, // 'extracting' | 'transcribing' | 'translating' | 'tts' | 'exporting' | 'done' | 'error'
+    progress: null,
+    error: null,
+    exportResult: null
+  })
+
+  const videoPreviewRef = useRef(null)
 
   // Environment & Dependency Check States (Phase 12)
   const [envStatus, setEnvStatus] = useState(null)
@@ -37,6 +49,15 @@ function App() {
     refreshDiagnostics()
   }, [refreshDiagnostics])
 
+  // Automatically update selected neural voice when target language changes
+  const handleLanguageChange = (newLang) => {
+    setSelectedLanguage(newLang)
+    const available = INDIAN_VOICE_CONFIG[newLang]
+    if (available && available.length > 0) {
+      setSelectedVoice(available[0].id)
+    }
+  }
+
   // Handle user selecting or dropping a video file
   const handleVideoSelect = (file) => {
     if (!file) return
@@ -49,6 +70,14 @@ function App() {
     const objectUrl = URL.createObjectURL(file)
     setVideoFile(file)
     setPreviewUrl(objectUrl)
+    // Reset pipeline status for new video
+    setDubbingStatus({
+      isDubbing: false,
+      step: null,
+      progress: null,
+      error: null,
+      exportResult: null
+    })
   }
 
   // Handle replacing current video with a new one
@@ -63,6 +92,13 @@ function App() {
     }
     setVideoFile(null)
     setPreviewUrl(null)
+    setDubbingStatus({
+      isDubbing: false,
+      step: null,
+      progress: null,
+      error: null,
+      exportResult: null
+    })
   }
 
   // Cleanup blob URL when the component unmounts
@@ -73,6 +109,20 @@ function App() {
       }
     }
   }, [previewUrl])
+
+  // Trigger full pipeline from Start Dubbing button
+  const handleStartDubbing = () => {
+    if (videoPreviewRef.current?.runFullDubbingPipeline) {
+      videoPreviewRef.current.runFullDubbingPipeline()
+    }
+  }
+
+  // Reveal exported video in system Finder / Explorer
+  const handleOpenExportFolder = () => {
+    if (videoPreviewRef.current?.openExportFolder) {
+      videoPreviewRef.current.openExportFolder()
+    }
+  }
 
   return (
     <div className="app-container">
@@ -110,12 +160,16 @@ function App() {
             <VideoUpload onVideoSelect={handleVideoSelect} />
           ) : (
             <VideoPreview
+              ref={videoPreviewRef}
               videoFile={videoFile}
               previewUrl={previewUrl}
               targetLanguage={selectedLanguage}
-              onLanguageChange={setSelectedLanguage}
+              selectedVoice={selectedVoice}
+              onVoiceChange={setSelectedVoice}
+              onLanguageChange={handleLanguageChange}
               onReplace={handleReplace}
               onRemove={handleRemove}
+              onPipelineStatusChange={setDubbingStatus}
             />
           )}
         </section>
@@ -125,7 +179,17 @@ function App() {
           <DubbingSettings
             hasVideo={!!videoFile}
             selectedLanguage={selectedLanguage}
-            onLanguageChange={setSelectedLanguage}
+            onLanguageChange={handleLanguageChange}
+            selectedVoice={selectedVoice}
+            onVoiceChange={setSelectedVoice}
+            availableVoices={INDIAN_VOICE_CONFIG[selectedLanguage] || []}
+            onStartDubbing={handleStartDubbing}
+            isDubbing={dubbingStatus.isDubbing}
+            dubbingStep={dubbingStatus.step}
+            pipelineProgress={dubbingStatus.progress}
+            dubbingError={dubbingStatus.error}
+            exportResult={dubbingStatus.exportResult}
+            onOpenFolder={handleOpenExportFolder}
           />
         </aside>
       </main>

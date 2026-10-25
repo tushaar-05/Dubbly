@@ -116,7 +116,7 @@ export function registerIpcHandlers() {
    * Validates that the audio file is a valid .wav file and resides strictly
    * within Dubbly's permitted temporary audio output directory.
    */
-  ipcMain.handle('transcription:transcribe-audio', async (_, { audioPath, modelPath } = {}) => {
+  ipcMain.handle('transcription:transcribe-audio', async (event, { audioPath, modelPath } = {}) => {
     if (!audioPath || typeof audioPath !== 'string') {
       throw new Error('Invalid audio path provided for transcription.')
     }
@@ -141,7 +141,13 @@ export function registerIpcHandlers() {
 
     return await transcriptionService.transcribeAudio(resolvedAudioPath, {
       modelPath,
-      onProgress: (p) => event.sender.send('pipeline:progress', p)
+      onProgress: (p) => {
+        try {
+          event.sender.send('pipeline:progress', p)
+        } catch {
+          // ignore if sender window is destroyed
+        }
+      }
     })
   })
 
@@ -167,7 +173,13 @@ export function registerIpcHandlers() {
     }
 
     return await translationService.translateTranscript(segments, targetLanguage, {
-      onProgress: (p) => event.sender.send('pipeline:progress', p)
+      onProgress: (p) => {
+        try {
+          event.sender.send('pipeline:progress', p)
+        } catch {
+          // ignore
+        }
+      }
     })
   })
 
@@ -202,7 +214,13 @@ export function registerIpcHandlers() {
 
     return await ttsService.synthesizeSegments(segments, targetLanguage, {
       voice,
-      onProgress: (p) => event.sender.send('pipeline:progress', p)
+      onProgress: (p) => {
+        try {
+          event.sender.send('pipeline:progress', p)
+        } catch {
+          // ignore
+        }
+      }
     })
   })
 

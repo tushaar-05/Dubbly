@@ -182,6 +182,14 @@ export const timingService = {
       )
     }
 
+    // Normalize startMs and endMs defensively
+    validClips.forEach((c) => {
+      if (c.startMs === undefined && c.start !== undefined) c.startMs = Number(c.start)
+      if (c.endMs === undefined && c.end !== undefined) c.endMs = Number(c.end)
+      if (c.startMs === undefined || isNaN(c.startMs)) c.startMs = 0
+      if (c.endMs === undefined || isNaN(c.endMs)) c.endMs = c.startMs + 2000
+    })
+
     // Sort chronologically by startMs
     validClips.sort((a, b) => a.startMs - b.startMs)
 

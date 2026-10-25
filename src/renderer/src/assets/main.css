@@ -5,6 +5,9 @@
   height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  width: 100vw;
+  max-width: 100vw;
 }
 
 .app-container {
@@ -12,6 +15,8 @@
   flex-direction: column;
   height: 100vh;
   background-color: var(--bg-app);
+  overflow: hidden;
+  width: 100%;
 }
 
 /* ==========================================================================
@@ -141,6 +146,9 @@
   gap: 20px;
   overflow: hidden;
   height: calc(100vh - 56px);
+  min-height: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .workspace-main {
@@ -149,10 +157,14 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .workspace-sidebar {
   width: 380px;
+  max-width: 42%;
+  min-width: 310px;
   flex-shrink: 0;
   height: 100%;
   display: flex;
@@ -257,6 +269,10 @@
   height: 100%;
   gap: 16px;
   overflow-y: auto;
+  overflow-x: hidden;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .video-card {
@@ -397,7 +413,11 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
   box-shadow: var(--shadow-subtle);
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .meta-info-col {
@@ -405,7 +425,9 @@
   flex-direction: column;
   gap: 6px;
   overflow: hidden;
-  margin-right: 16px;
+  min-width: 160px;
+  flex: 1;
+  margin-right: 0;
 }
 
 .meta-filename-row {
@@ -451,7 +473,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
 .btn-meta-action {
@@ -696,9 +718,16 @@ input:checked + .slider-pill:before {
 }
 
 .flag-circle {
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.select-wrapper .flag-circle {
   position: absolute;
   left: 10px;
-  font-size: 14px;
   pointer-events: none;
   z-index: 1;
 }
@@ -809,11 +838,172 @@ input:checked + .slider-pill:before {
   transition: all 0.15s ease;
 }
 
+.btn-start-dubbing:hover:not(:disabled) {
+  background-color: var(--color-primary-hover);
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(2, 132, 199, 0.3);
+}
+
+.btn-start-dubbing.running {
+  background-color: #0284c7;
+  cursor: wait;
+}
+
 .btn-start-dubbing:disabled {
   background-color: #cbd5e1;
   color: #64748b;
   cursor: not-allowed;
   box-shadow: none;
+}
+
+.voice-select {
+  padding-left: 12px;
+  max-width: 170px;
+}
+
+/* Live Dubbing Pipeline Progress Card */
+.dubbing-live-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background-color: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: var(--radius-sm);
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+.dubbing-step-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dubbing-step-chip {
+  font-size: 11px;
+  font-weight: 700;
+  color: #0369a1;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.dubbing-percent {
+  font-size: 11px;
+  font-weight: 700;
+  color: #0284c7;
+}
+
+.dubbing-message {
+  font-size: 12px;
+  color: #0369a1;
+  line-height: 1.35;
+  margin: 0;
+}
+
+/* Dubbing Success Banner in Sidebar */
+.dubbing-success-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background-color: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: var(--radius-sm);
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+.dubbing-success-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #166534;
+}
+
+.dubbing-success-meta {
+  font-size: 11px;
+  color: #15803d;
+  margin: 0;
+}
+
+.dubbing-success-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.btn-success-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  background-color: #ffffff;
+  color: #166534;
+  border: 1px solid #86efac;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-success-action:hover {
+  background-color: #dcfce7;
+  border-color: #4ade80;
+}
+
+/* Dubbing Error Banner in Sidebar */
+.dubbing-error-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-sm);
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+.dubbing-error-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #991b1b;
+}
+
+.dubbing-error-message {
+  font-size: 12px;
+  color: #b91c1c;
+  line-height: 1.35;
+  margin: 0;
+  word-break: break-word;
+}
+
+.btn-retry-dubbing {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 5px;
+  padding: 4px 10px;
+  background-color: #ffffff;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-top: 2px;
+}
+
+.btn-retry-dubbing:hover {
+  background-color: #fee2e2;
+  border-color: #f87171;
 }
 
 .pipeline-notice {
@@ -896,6 +1086,8 @@ input:checked + .slider-pill:before {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .status-title-group {
@@ -904,6 +1096,7 @@ input:checked + .slider-pill:before {
   gap: 8px;
   font-size: 13px;
   font-weight: 600;
+  min-width: 0;
 }
 
 .text-primary {
@@ -934,7 +1127,7 @@ input:checked + .slider-pill:before {
 
 .extraction-details-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
   gap: 8px;
   font-size: 12px;
   padding-top: 4px;
@@ -944,10 +1137,11 @@ input:checked + .slider-pill:before {
   display: flex;
   gap: 6px;
   overflow: hidden;
+  min-width: 0;
 }
 
 .detail-item.full-width {
-  grid-column: span 3;
+  grid-column: 1 / -1;
 }
 
 .detail-label {
@@ -999,10 +1193,13 @@ input:checked + .slider-pill:before {
 .test-helper-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px 8px;
   font-size: 12px;
   color: var(--text-muted);
   padding: 4px 0 12px 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .test-helper-label {
@@ -1037,6 +1234,12 @@ input:checked + .slider-pill:before {
   line-height: 1.4;
   margin-bottom: 8px;
   width: 100%;
+  box-sizing: border-box;
+}
+
+.test-feedback-text {
+  min-width: 0;
+  word-break: break-word;
 }
 
 .test-feedback-pill.running {
@@ -1082,6 +1285,7 @@ input:checked + .slider-pill:before {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 .btn-transcribe-trigger {
@@ -2380,6 +2584,7 @@ input:checked + .slider-pill:before {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
   padding: 10px 14px;
   background-color: #fffbeb;
   border: 1px solid #fde68a;
